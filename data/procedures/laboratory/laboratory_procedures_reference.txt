@@ -1,0 +1,41 @@
+
+LRS — LABORATORY RECOGNITION SCHEME — Bureau of Indian Standards
+
+WHAT IS LRS:
+The Laboratory Recognition Scheme (LRS) allows BIS to recognise laboratories
+across India for testing products against Indian Standards.
+Recognized labs can issue test reports accepted for BIS certification and CRS registration.
+
+TYPES OF RECOGNITION:
+1. For Product Certification (ISI Mark): Lab recognized under IS-specific scope
+2. For CRS Registration: Lab recognized for electronic/IT product testing
+3. Export Inspection: Some labs recognized for export purpose
+
+LIMS — Laboratory Information Management System:
+BIS uses LIMS for tracking samples, test results, and lab accreditation.
+
+PROCEDURE TO APPLY FOR LAB RECOGNITION:
+Step 1: Lab must have NABL (National Accreditation Board for Testing and Calibration Laboratories) accreditation
+Step 2: Apply online at BIS portal under Laboratory Recognition
+Step 3: Submit documents:
+  - NABL certificate with relevant IS scope
+  - Equipment calibration certificates
+  - Quality manual
+  - Staff qualifications/CVs
+  - Lab layout/floor plan
+Step 4: BIS assesses the application
+Step 5: BIS technical committee visits the lab for inspection
+Step 6: BIS grants recognition if satisfied; issues Recognition Certificate
+Step 7: Recognition renewed every 2 years
+
+RECOGNIZED LAB DIRECTORY:
+- Full list of BIS-recognized labs available on BIS website
+- Searchable by product type, IS standard, city/state
+
+TEST SAMPLE PROCEDURE:
+- Manufacturer/importer collects samples as per IS specification
+- Samples submitted to BIS-recognized lab with duly filled form
+- Lab tests as per IS method
+- Test report issued within agreed TAT (typically 15-30 days)
+- Test report submitted to BIS with certification application
+

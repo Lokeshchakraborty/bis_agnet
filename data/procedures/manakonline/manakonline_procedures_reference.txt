@@ -1,0 +1,51 @@
+
+MANAKONLINE PORTAL — Bureau of Indian Standards Online Application System
+
+PORTAL URL: https://manakonline.in
+
+WHAT IS MANAKONLINE:
+Manakonline is BIS's unified online portal for all certification, registration,
+and hallmarking applications. It is also referred to as e-BIS.
+
+KEY MODULES:
+1. Product Certification (ISI Mark / FMCS)
+2. Compulsory Registration Scheme (CRS)
+3. Hallmarking (Jeweller registration, AHC)
+4. Laboratory Recognition Scheme (LRS)
+5. System Certification (ISO 9001 etc.)
+
+HOW TO REGISTER ON MANAKONLINE:
+Step 1: Visit https://manakonline.in
+Step 2: Click "Register" → fill organization type (manufacturer/importer/jeweller/lab)
+Step 3: Enter PAN, GSTIN, mobile number, email
+Step 4: Verify OTP on mobile and email
+Step 5: Set password
+Step 6: Login and complete profile
+
+NEW APPLICATION PROCEDURE:
+Step 1: Login at https://manakonline.in
+Step 2: Select service type (Product Certification / CRS / Hallmarking etc.)
+Step 3: Fill in product details, IS standard, factory address
+Step 4: Upload required documents (test reports, declarations)
+Step 5: Pay fee online (Net Banking / NEFT / UPI / Credit Card)
+Step 6: Track application status in "My Applications" dashboard
+
+COMMON ISSUES AND SOLUTIONS:
+- Forgot password: Click "Forgot Password" → OTP on registered mobile
+- Document upload failed: File must be PDF, max 5 MB per document
+- Payment failure: Contact BIS helpdesk; do not re-apply; provide transaction ID
+- Application stuck in "Submitted" state: Contact BIS regional office
+
+HELPDESK:
+- Email: helpdesk.manak@bis.gov.in
+- Phone: 011-45208274 / 011-45208275
+- Working hours: Monday–Friday 9 AM to 5:30 PM
+
+e-CML:
+The electronic CML (Compulsory Marking Licence) is issued via Manakonline.
+Licensees can download their e-CML directly from the portal.
+
+RENEWAL:
+- CML renewal: Apply online 3 months before expiry
+- CRS renewal: Apply online 2 months before expiry
+- Hallmarking renewal: Apply online before certificate expiry

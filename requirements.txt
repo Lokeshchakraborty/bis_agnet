@@ -1,0 +1,36 @@
+# --- Core Orchestration & Agent Framework ---
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langgraph>=0.1.0
+
+# --- LLM Provider (Google Gemini) ---
+langchain-google-genai>=1.0.6
+google-generativeai>=0.7.0
+
+# --- Local Embeddings & Vector Database ---
+ollama>=0.2.1
+chromadb>=0.5.0
+
+# --- Local Speech-to-Text & Translation (Whisper) ---
+openai-whisper>=20231117
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.24.0
+
+# --- Web Scraping & Dynamic Automation ---
+playwright>=1.44.0
+nest_asyncio>=1.6.0
+beautifulsoup4>=4.12.3
+requests>=2.32.0
+
+# --- Data Handling & Parsing ---
+pandas>=2.2.0
+openpyxl>=3.1.2
+lxml>=5.2.0
+html5lib>=1.1
+
+# --- Terminal UI, Validation & Environment ---
+pydantic>=2.7.0
+rich>=13.7.1
+python-dotenv>=1.0.1

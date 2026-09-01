@@ -1,0 +1,46 @@
+
+CRS — COMPULSORY REGISTRATION SCHEME — Bureau of Indian Standards
+
+WHAT IS CRS:
+The Compulsory Registration Scheme (CRS) applies to electronic and IT products.
+Products under CRS must be registered with BIS before they can be sold in India.
+CRS is different from ISI mark certification — it involves self-declaration + lab testing.
+
+SCHEME II — Applicable to domestic manufacturers and importers.
+
+CRS-COVERED PRODUCTS (examples):
+- Mobile phones and smartphones
+- Laptops and tablets
+- Televisions (LED/LCD)
+- Power banks and batteries
+- Solar photovoltaic products
+- LED lights and fixtures
+- Kitchen appliances (microwave, induction cooker)
+- Wearables and smartwatches
+
+REGISTRATION PROCEDURE:
+Step 1: Identify if product is under CRS (check BIS notification/MeitY order)
+Step 2: Get product tested at BIS-recognized lab against applicable IS standard
+Step 3: Obtain test report from recognized lab
+Step 4: Apply online at https://crsbis.in or Manakonline portal
+Step 5: Upload test report and self-declaration form
+Step 6: Pay registration fee
+Step 7: BIS issues Registration Certificate with R-number
+Step 8: Display R-number on product packaging
+
+REQUIRED DOCUMENTS:
+- Application form (online)
+- Test report from BIS-recognized lab
+- Self-declaration of conformity (SDoC)
+- Copy of IS standard used for testing
+- Factory/importer details
+- Product images showing markings
+
+REGISTRATION FEE:
+- Domestic manufacturer: Rs 1,000 per model
+- Importer: Rs 1,000 per model
+- Validity: 2 years from date of issue
+
+CRO — CENTRAL REGIONAL OFFICE:
+- Applications are processed by respective BIS regional/branch offices
+- Online applications submitted at crsbis.in are routed to CRO automatically

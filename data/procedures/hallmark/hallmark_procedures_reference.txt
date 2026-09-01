@@ -1,0 +1,36 @@
+
+HALLMARKING PROCEDURES — Bureau of Indian Standards
+
+MANDATORY HALLMARKING:
+Gold hallmarking is mandatory in India under the BIS (Hallmarking) Regulations, 2018.
+All gold jewellery/artefacts of 14K, 18K, 20K, 22K, 23K, and 24K purity sold in India must be hallmarked.
+Silver hallmarking is mandatory for silverware and silver articles.
+
+HALLMARK COMPONENTS (Gold):
+1. BIS Mark (triangle with letters BIS)
+2. Purity/Fineness (e.g., 916 for 22 carat)
+3. HUID — Hallmark Unique Identification Number (6-digit alphanumeric code)
+
+HUID VERIFICATION:
+- Consumers can verify HUID via BIS Care mobile app (available on Play Store and App Store)
+- Enter 6-digit HUID to see metal type, purity, jeweller details, AHC name
+
+JEWELLER REGISTRATION PROCEDURE:
+Step 1: Apply online at https://www.bis.gov.in → Hallmarking → Registration of Jewellers
+Step 2: Submit application form with required documents:
+  - PAN card of firm/owner
+  - GST registration certificate
+  - Shop/establishment address proof
+  - Bank account details
+Step 3: Pay registration fee (one-time, based on category)
+Step 4: BIS issues Certificate of Registration valid for 5 years
+Step 5: Hallmark jewellery only from BIS-recognised Assaying & Hallmarking Centres (AHC)
+
+ASSAYING & HALLMARKING CENTRES (AHC):
+- BIS recognises AHCs across India to assay and hallmark jewellery
+- Recognised AHCs are listed on BIS website
+- Apply for AHC recognition online → submit application → BIS inspection → grant of recognition
+
+OFFENCES & PENALTIES:
+- Selling un-hallmarked gold jewellery is punishable under BIS Act 2016
+- Penalty: imprisonment up to 2 years or fine up to Rs 2 lakh or both

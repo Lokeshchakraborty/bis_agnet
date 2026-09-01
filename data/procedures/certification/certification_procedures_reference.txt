@@ -1,0 +1,38 @@
+
+PRODUCT CERTIFICATION (ISI MARK) PROCEDURES — Bureau of Indian Standards
+
+SCHEME I — FMCS (Factory/Manufacturing Certification Scheme):
+Used for domestic manufacturers and foreign manufacturers (FMCS).
+
+STEP-BY-STEP ISI MARK APPLICATION:
+Step 1: Identify applicable IS code for your product (use BIS catalog search)
+Step 2: Apply online at https://manakonline.in → Product Certification → New Application
+Step 3: Submit application with:
+  - Factory address and manufacturing details
+  - Testing lab reports (from BIS-recognized lab)
+  - Quality control system documentation
+Step 4: BIS processes application; issues Grant Inspection
+Step 5: BIS inspector visits factory for audit and sample collection
+Step 6: Samples tested at BIS lab (or recognized lab)
+Step 7: If samples pass: BIS issues CML (Compulsory Marking Licence)
+Step 8: CML valid for 1 year; renewed annually after surveillance
+
+QUALITY CONTROL ORDERS (QCO):
+Products under QCO cannot be manufactured/sold without ISI mark.
+QCO is notified by Ministry; BIS administers the ISI mark certification.
+
+FOREIGN MANUFACTURERS CERTIFICATION SCHEME (FMCS):
+- Foreign manufacturers must appoint an Agent in India (AIR - Agent In India for Registration)
+- AIR acts as liaison with BIS on behalf of foreign manufacturer
+- Same ISI mark scheme applies; factory audit done at foreign location
+
+FEES (approximate):
+- Application processing fee: Rs 1,000 - Rs 10,000 (based on product)
+- Testing charges: actual cost at recognized lab
+- Annual licence fee: based on production quantity
+- Marking fee: per unit marked with ISI mark
+
+CML NUMBER:
+- CML stands for Compulsory Marking Licence
+- Format: CM/L-XXXXXXX
+- Must be displayed on product packaging along with ISI mark
