@@ -15,7 +15,7 @@ from typing import Optional
 import numpy as np
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_ollama import OllamaEmbeddings
+from langchain_core.embeddings import Embeddings
 
 logger = logging.getLogger("bis_retrieval")
 
@@ -109,7 +109,7 @@ def _cosine_rerank(
 def hybrid_retrieve(
     query: str,
     chroma_db: Chroma,
-    embeddings: OllamaEmbeddings,
+    embeddings: Embeddings,
     domain: str,
     dense_k: int = 5,
     bm25_k: int = 5,

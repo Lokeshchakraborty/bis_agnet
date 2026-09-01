@@ -1,0 +1,17 @@
+﻿.env
+.env.*
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+ENV/
+data/chroma_db/
+data/chroma.sqlite3
+.DS_Store
+*.log

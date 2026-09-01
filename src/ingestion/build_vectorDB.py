@@ -1,147 +1,225 @@
 ﻿"""
 BIS ChromaDB Ingestion
 ======================
-Ingests PDFs and .txt files from data/procedures/<domain>/ into separate
-Chroma collections, one per domain, with rich metadata on each chunk.
+Ingests all PDFs and .txt files from data/procedures/<domain>/ into separate
+Chroma collections, one per domain, using fast ONNX-accelerated BGE embeddings
+(or Google Cloud / Ollama embeddings if configured).
 
-Run after download_bis_docs.py:
-    python src/ingestion/build_vectorDB.py
+Usage:
+    python src/ingestion/build_vectorDB.py --clean
 """
 from __future__ import annotations
 
 import logging
 import os
+import shutil
+import sys
+import time
 from pathlib import Path
 
-from langchain_community.document_loaders import (
-    DirectoryLoader,
-    PyPDFLoader,
-    TextLoader,
-)
+from dotenv import load_dotenv
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
+
+# Path setup
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+load_dotenv(PROJECT_ROOT / ".env")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger("bis_ingestion")
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BASE_DATA_DIR = PROJECT_ROOT / "data" / "procedures"
 PERSIST_DIR = str(PROJECT_ROOT / "data" / "chroma_db")
 
-# Canonical domain names (must match Intent enum values in main.py)
 SEGMENTS = ["hallmark", "registration", "certification", "laboratory", "manakonline"]
 
-# Map filesystem folder names to canonical names (handles typos)
 FOLDER_ALIASES = {
-    "labratory": "laboratory",   # fix the typo that exists in the filesystem
+    "labratory": "laboratory",
 }
 
 
+def get_embeddings_model() -> Embeddings:
+    """Return embedding model based on environment configuration."""
+    provider = os.getenv("BIS_EMBEDDING_PROVIDER", "fastembed").lower()
+    
+    # from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+    # model_name = os.getenv("BIS_EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    # logger.info("Using FastEmbed Multilingual (ONNX): %s", model_name)
+    # return FastEmbedEmbeddings(model_name=model_name)
+    from langchain_mistralai import MistralAIEmbeddings
+    
+    return MistralAIEmbeddings(model="mistral-embed-2312")
+
 def _get_folder(segment: str) -> Path:
-    """Return the procedures folder for a segment, handling folder name aliases."""
     direct = BASE_DATA_DIR / segment
     if direct.exists():
         return direct
-    # Check aliases
     for alias, canonical in FOLDER_ALIASES.items():
         if canonical == segment:
             aliased = BASE_DATA_DIR / alias
             if aliased.exists():
                 return aliased
-    return direct  # return even if missing; caller will handle
+    return direct
 
 
 def _add_metadata(docs: list[Document], domain: str) -> list[Document]:
-    """Stamp each chunk with domain + source file metadata."""
+    clean_docs: list[Document] = []
     for doc in docs:
+        text = doc.page_content.strip()
+        if len(text) < 30:
+            continue
         src = doc.metadata.get("source", "")
         doc.metadata["domain"] = domain
         doc.metadata["source_filename"] = Path(src).name if src else "unknown"
         doc.metadata["page"] = doc.metadata.get("page", 0)
-    return docs
+        clean_docs.append(doc)
+    return clean_docs
 
 
-def ingest_segment(segment: str, embeddings: OllamaEmbeddings) -> None:
+def ingest_segment(segment: str, embeddings: Embeddings, reset: bool = True) -> int:
     folder = _get_folder(segment)
     
     if not folder.exists():
-        logger.warning("Directory not found: %s -- creating empty folder.", folder)
-        folder.mkdir(parents=True, exist_ok=True)
-        logger.info("Place PDFs or .txt files in %s and re-run.", folder)
-        return
+        logger.warning("Directory not found: %s -- skipping.", folder)
+        return 0
 
-    logger.info("\nProcessing segment: '%s' from %s", segment, folder)
+    logger.info("\n==================================================")
+    logger.info("Processing domain: '%s' from %s", segment, folder)
+    logger.info("==================================================")
 
-    # Load PDFs
+    # 1. Load PDFs
     pdf_docs: list[Document] = []
-    pdf_files = list(folder.glob("**/*.pdf"))
+    pdf_files = sorted(list(folder.glob("**/*.pdf")))
     if pdf_files:
-        logger.info("  Found %d PDF(s)", len(pdf_files))
+        logger.info("Found %d PDF file(s)", len(pdf_files))
         for pdf_path in pdf_files:
             try:
                 loader = PyPDFLoader(str(pdf_path))
-                pdf_docs.extend(loader.load())
+                loaded = loader.load()
+                pdf_docs.extend(loaded)
+                logger.info("  Loaded PDF: %s (%d pages)", pdf_path.name, len(loaded))
             except Exception as exc:
-                logger.warning("  Failed to load %s: %s", pdf_path.name, exc)
+                logger.warning("  Failed to load PDF %s: %s", pdf_path.name, exc)
 
-    # Load .txt files
+    # 2. Load .txt files
     txt_docs: list[Document] = []
-    txt_files = list(folder.glob("**/*.txt"))
+    txt_files = sorted(list(folder.glob("**/*.txt")))
     if txt_files:
-        logger.info("  Found %d TXT file(s)", len(txt_files))
+        logger.info("Found %d TXT file(s)", len(txt_files))
         for txt_path in txt_files:
             try:
                 loader = TextLoader(str(txt_path), encoding="utf-8")
-                txt_docs.extend(loader.load())
+                loaded = loader.load()
+                txt_docs.extend(loaded)
+                logger.info("  Loaded TXT: %s", txt_path.name)
             except Exception as exc:
-                logger.warning("  Failed to load %s: %s", txt_path.name, exc)
+                logger.warning("  Failed to load TXT %s: %s", txt_path.name, exc)
 
     all_docs = pdf_docs + txt_docs
     if not all_docs:
-        logger.warning("  No documents found in %s -- skipping.", folder)
-        return
+        logger.warning("No documents found in %s -- skipping.", folder)
+        return 0
 
-    logger.info("  Total pages/chunks before split: %d", len(all_docs))
+    logger.info("Total pages/documents loaded: %d", len(all_docs))
 
-    # Smaller chunks = more precise retrieval hits
+    # 3. Clean Text Splitting (1200 chars preserves complete clauses & rules)
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=600,
-        chunk_overlap=100,
-        separators=["\n\n", "\n", "Step ", "Clause ", ". ", " "],
+        chunk_size=1200,
+        chunk_overlap=200,
+        separators=["\n\n", "\n", "Step ", "Clause ", "Section ", ". ", " "],
     )
-    chunks = splitter.split_documents(all_docs)
-    chunks = _add_metadata(chunks, segment)
-    logger.info("  Split into %d chunks", len(chunks))
+    raw_chunks = splitter.split_documents(all_docs)
+    chunks = _add_metadata(raw_chunks, segment)
+    logger.info("Created %d meaningful chunks for domain '%s'", len(chunks), segment)
 
-    logger.info("  Embedding and saving to Chroma collection '%s'...", segment)
-    Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
+    if not chunks:
+        return 0
+
+    # 4. Initialize Chroma Collection
+    db = Chroma(
         collection_name=segment,
+        embedding_function=embeddings,
         persist_directory=PERSIST_DIR,
     )
-    logger.info("  Done -- %d chunks saved for '%s'.", len(chunks), segment)
+    
+    if reset:
+        try:
+            db.delete_collection()
+            db = Chroma(
+                collection_name=segment,
+                embedding_function=embeddings,
+                persist_directory=PERSIST_DIR,
+            )
+        except Exception:
+            pass
+
+    # Batch embedding in chunks of 100
+    batch_size = 100
+    total_batches = (len(chunks) + batch_size - 1) // batch_size
+    t_start = time.time()
+    
+    for b_idx in range(0, len(chunks), batch_size):
+        batch = chunks[b_idx : b_idx + batch_size]
+        curr_batch_num = (b_idx // batch_size) + 1
+        db.add_documents(batch)
+        logger.info(
+            "  [Batch %d/%d] Embedded chunks [%d..%d] of %d",
+            curr_batch_num, total_batches, b_idx + 1, min(b_idx + batch_size, len(chunks)), len(chunks)
+        )
+
+    t_total = time.time() - t_start
+    total_in_db = db._collection.count()
+    logger.info("Domain '%s' complete -- %d chunks embedded in %.2fs (%.1f chunks/sec).",
+                segment, total_in_db, t_total, total_in_db / max(t_total, 0.001))
+    return total_in_db
 
 
-def ingest_pdfs_to_chroma() -> None:
+def ingest_pdfs_to_chroma(clean_db: bool = False) -> None:
     logger.info("Starting BIS PDF Ingestion to ChromaDB...")
-    logger.info("Persist dir: %s", PERSIST_DIR)
+    logger.info("Persist directory: %s", PERSIST_DIR)
 
-    embeddings = OllamaEmbeddings(
-        model=os.getenv("BIS_EMBEDDING_MODEL", "embeddinggemma"),
-        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-    )
+    if clean_db and Path(PERSIST_DIR).exists():
+        logger.info("Cleaning old persist directory: %s", PERSIST_DIR)
+        shutil.rmtree(PERSIST_DIR, ignore_errors=True)
 
+    embeddings = get_embeddings_model()
+
+    summary: dict[str, int] = {}
     for segment in SEGMENTS:
         try:
-            ingest_segment(segment, embeddings)
+            count = ingest_segment(segment, embeddings, reset=True)
+            summary[segment] = count
         except Exception as exc:
             logger.error("Failed to ingest segment '%s': %s", segment, exc)
+            summary[segment] = 0
 
-    logger.info("\nIngestion complete!")
+    try:
+        from tools.retrieval_tools import reset_bm25_cache
+        reset_bm25_cache()
+    except Exception:
+        pass
+
+    logger.info("\n==================================================")
+    logger.info("              INGESTION SUMMARY                   ")
+    logger.info("==================================================")
+    for seg, count in summary.items():
+        logger.info("  %-15s : %d chunks", seg, count)
+    logger.info("  %-15s : %d chunks total", "TOTAL", sum(summary.values()))
+    logger.info("==================================================")
 
 
 if __name__ == "__main__":
-    ingest_pdfs_to_chroma()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--clean", action="store_true", help="Wipe chroma_db directory before starting")
+    args = parser.parse_args()
+    ingest_pdfs_to_chroma(clean_db=args.clean)

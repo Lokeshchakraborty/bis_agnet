@@ -32,11 +32,12 @@ from rich.console import Console
 from rich.panel import Panel
 
 from langchain_ollama import OllamaEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_chroma import Chroma
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
+from langchain_mistralai import MistralAIEmbeddings
 
 # --------------------------------------------------------------------------- #
 # Path setup
@@ -59,12 +60,13 @@ console = Console()
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class Config:
-    embedding_model: str = os.getenv("BIS_EMBEDDING_MODEL", "embeddinggemma")
+    embedding_provider: str = os.getenv("BIS_EMBEDDING_PROVIDER", "MistralAIEmbeddings")
+    embedding_model: str = os.getenv("BIS_EMBEDDING_MODEL", "mistral-embed-2312")
     embedding_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     llm_model: str = os.getenv("BIS_LLM_MODEL", "gemini-3.5-flash-lite")
     llm_temperature: float = float(os.getenv("BIS_LLM_TEMPERATURE", "0.2"))
     db_path: str = os.getenv("BIS_CHROMA_PATH", "./data/chroma_db")
-    retriever_k: int = int(os.getenv("BIS_RETRIEVER_K", "5"))   # candidates before rerank
+    retriever_k: int = int(os.getenv("BIS_RETRIEVER_K", "3"))   # candidates before rerank
     rerank_top_n: int = int(os.getenv("BIS_RERANK_TOP_N", "2")) # kept after rerank
     history_window: int = int(os.getenv("BIS_HISTORY_WINDOW", "3"))
     max_stored_history: int = int(os.getenv("BIS_MAX_STORED_HISTORY", "5"))
@@ -174,6 +176,70 @@ class BISResponse(BaseModel):
 # --------------------------------------------------------------------------- #
 # Graph state — added cache_key field
 # --------------------------------------------------------------------------- #
+# Token & Usage Tracking
+# --------------------------------------------------------------------------- #
+class TokenTracker:
+    def __init__(self) -> None:
+        self.session_prompt_tokens: int = 0
+        self.session_completion_tokens: int = 0
+        self.session_saved_tokens: int = 0
+        self.session_embedding_tokens: int = 0
+        self.turn_prompt_tokens: int = 0
+        self.turn_completion_tokens: int = 0
+        self.turn_embedding_tokens: int = 0
+
+    def reset_turn(self) -> None:
+        self.turn_prompt_tokens = 0
+        self.turn_completion_tokens = 0
+        self.turn_embedding_tokens = 0
+
+    def add_llm_usage(self, usage: Optional[dict]) -> None:
+        if not usage:
+            return
+        inp = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
+        out = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
+        self.turn_prompt_tokens += inp
+        self.turn_completion_tokens += out
+        self.session_prompt_tokens += inp
+        self.session_completion_tokens += out
+
+    def add_embedding_text(self, text: str) -> None:
+        if not text:
+            return
+        # Approx 1 token per 4 characters
+        toks = max(1, len(text) // 4)
+        self.turn_embedding_tokens += toks
+        self.session_embedding_tokens += toks
+
+    def record_cache_hit(self, estimated_saved: int = 750) -> None:
+        self.session_saved_tokens += estimated_saved
+
+    def get_turn_summary(self, cache_hit: bool = False) -> dict:
+        p_tok = 0 if cache_hit else self.turn_prompt_tokens
+        c_tok = 0 if cache_hit else self.turn_completion_tokens
+        t_tok = p_tok + c_tok
+        return {
+            "turn_llm_tokens": t_tok,
+            "turn_prompt_tokens": p_tok,
+            "turn_completion_tokens": c_tok,
+            "turn_embedding_tokens": self.turn_embedding_tokens,
+            "session_total_llm_tokens": self.session_prompt_tokens + self.session_completion_tokens,
+            "session_total_saved_tokens": self.session_saved_tokens,
+            "session_embedding_tokens": self.session_embedding_tokens,
+            "embedding_provider": (
+                f"{CONFIG.embedding_provider.upper()} (Local ONNX - $0.00 API burn)"
+                if CONFIG.embedding_provider == "fastembed"
+                else f"{CONFIG.embedding_provider.upper()} API"
+            ),
+        }
+
+
+token_tracker = TokenTracker()
+
+
+# --------------------------------------------------------------------------- #
+# Graph state
+# --------------------------------------------------------------------------- #
 class AgentState(TypedDict):
     query: str
     standalone_query: str
@@ -184,13 +250,22 @@ class AgentState(TypedDict):
     final_output: Optional[BISResponse]
     cache_key: str
     cache_hit: Optional[bool]
+    token_usage: Optional[dict]
 
 
 # --------------------------------------------------------------------------- #
 # Component initialization
 # --------------------------------------------------------------------------- #
 def initialize_components():
-    embeddings = OllamaEmbeddings(model=CONFIG.embedding_model, base_url=CONFIG.embedding_base_url)
+    # provider = CONFIG.embedding_provider.lower()
+    # if provider == "fastembed":
+    #     from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+    #     embeddings = FastEmbedEmbeddings(model_name=CONFIG.embedding_model)
+    # elif provider == "google":
+    #     embeddings = GoogleGenerativeAIEmbeddings(model=CONFIG.embedding_model)
+    # else:
+    #     embeddings = OllamaEmbeddings(model=CONFIG.embedding_model, base_url=CONFIG.embedding_base_url)
+    embeddings = MistralAIEmbeddings(model=CONFIG.embedding_model)
     llm = ChatGoogleGenerativeAI(model=CONFIG.llm_model, temperature=CONFIG.llm_temperature)
 
     # Catalog retriever (default collection)
@@ -211,8 +286,8 @@ def initialize_components():
 
 
 llm, embeddings, catalog_retriever, domain_chromadbs = initialize_components()
-structured_response_llm = llm.with_structured_output(BISResponse)
-structured_intent_llm = llm.with_structured_output(IntentResult)
+structured_response_llm = llm.with_structured_output(BISResponse, include_raw=True)
+structured_intent_llm = llm.with_structured_output(IntentResult, include_raw=True)
 
 # Global cache instance
 response_cache = ResponseCache()
@@ -246,9 +321,10 @@ def _rewrite_query(last_agent_msg: str, query: str) -> str:
          "4. Output ONLY the standalone query — no preamble, no explanation."),
         ("human", "Agent's Last Message:\n{last_agent_msg}\n\nUser's Reply: {query}"),
     ])
-    return (prompt | llm | StrOutputParser()).invoke(
-        {"last_agent_msg": last_agent_msg, "query": query}
-    ).strip()
+    msg = prompt.format_messages(last_agent_msg=last_agent_msg, query=query)
+    resp = llm.invoke(msg)
+    token_tracker.add_llm_usage(getattr(resp, "usage_metadata", None))
+    return str(resp.content).strip()
 
 
 def contextualize_query(state: AgentState) -> dict:
@@ -282,8 +358,16 @@ Classify the user's standalone query into EXACTLY ONE of the following 7 categor
 CRITICAL: Any product name mention defaults to catalog_search."""),
         ("human", "{query}"),
     ])
-    result: IntentResult = (prompt | structured_intent_llm).invoke({"query": query})
-    return result.intent
+    msg = prompt.format_messages(query=query)
+    raw_res = structured_intent_llm.invoke(msg)
+    if isinstance(raw_res, dict) and "raw" in raw_res:
+        token_tracker.add_llm_usage(getattr(raw_res["raw"], "usage_metadata", None))
+        parsed = raw_res.get("parsed")
+        if parsed and hasattr(parsed, "intent"):
+            return parsed.intent
+    elif hasattr(raw_res, "intent"):
+        return raw_res.intent
+    return Intent.CATALOG_SEARCH
 
 
 def intent_classifier(state: AgentState) -> dict:
@@ -304,6 +388,7 @@ def retrieve_domain(domain: Intent):
     """
     def _node(state: AgentState) -> dict:
         chroma_db = domain_chromadbs[domain.value]
+        token_tracker.add_embedding_text(state["standalone_query"])
         try:
             _, context = hybrid_retrieve(
                 query=state["standalone_query"],
@@ -324,6 +409,7 @@ def retrieve_domain(domain: Intent):
             except Exception:
                 context = "No relevant documents found."
 
+        token_tracker.add_embedding_text(context)
         return {"retrieved_context": context, "domain": domain.value}
 
     return _node
@@ -339,6 +425,7 @@ def retrieve_catalog(state: AgentState) -> dict:
     IS-code / product lookups: combine live BIS portal scraping (primary)
     with local Chroma DB (supplementary).
     """
+    token_tracker.add_embedding_text(state["standalone_query"])
     docs = catalog_retriever.invoke(state["standalone_query"])
     db_context = "\n".join(d.page_content for d in docs) if docs else "No local catalog entries found."
 
@@ -355,6 +442,7 @@ def retrieve_catalog(state: AgentState) -> dict:
         f"[LIVE PORTAL DATA]:\n{scraped}\n\n"
         f"[LOCAL KNOWLEDGE BASE]:\n{db_context}"
     )
+    token_tracker.add_embedding_text(combined)
     return {"retrieved_context": combined, "domain": "catalog"}
 
 
@@ -382,9 +470,16 @@ def _synthesize(chat_history: str, context: str, query: str, is_chat: bool, doma
         )
 
     prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", "{query}")])
-    return (prompt | structured_response_llm).invoke({
-        "chat_history": chat_history, "context": context, "query": query,
-    })
+    msg = prompt.format_messages(chat_history=chat_history, context=context, query=query)
+    raw_res = structured_response_llm.invoke(msg)
+    if isinstance(raw_res, dict) and "raw" in raw_res:
+        token_tracker.add_llm_usage(getattr(raw_res["raw"], "usage_metadata", None))
+        parsed = raw_res.get("parsed")
+        if isinstance(parsed, BISResponse):
+            return parsed
+    elif isinstance(raw_res, BISResponse):
+        return raw_res
+    return BISResponse(core_response=str(raw_res))
 
 
 def synthesize_response(state: AgentState) -> dict:
@@ -396,12 +491,17 @@ def synthesize_response(state: AgentState) -> dict:
         cache_key = response_cache.make_key(state["intent"], state["standalone_query"])
         cached = response_cache.get(cache_key)
         if cached:
+            token_tracker.record_cache_hit(estimated_saved=750)
             result = BISResponse(**{
                 k: cached[k]
                 for k in BISResponse.model_fields
                 if k in cached
             })
-            return {"final_output": result, "cache_hit": True}
+            return {
+                "final_output": result,
+                "cache_hit": True,
+                "token_usage": token_tracker.get_turn_summary(cache_hit=True),
+            }
 
     # 2. LLM Synthesis
     try:
@@ -431,7 +531,11 @@ def synthesize_response(state: AgentState) -> dict:
         except Exception:
             pass
 
-    return {"final_output": result, "cache_hit": False}
+    return {
+        "final_output": result,
+        "cache_hit": False,
+        "token_usage": token_tracker.get_turn_summary(cache_hit=False),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -477,6 +581,7 @@ class Session:
     )
 
     def run_turn(self, user_query: str) -> dict:
+        token_tracker.reset_turn()
         # Full graph run — cache check happens INSIDE synthesize_response node
         # using the standalone_query (after contextualization), not the raw input.
         # This prevents short follow-up words like "yes" from incorrectly hitting
@@ -490,6 +595,8 @@ class Session:
             "retrieved_context": "",
             "final_output": None,
             "cache_key": "",   # will be set by synthesize_response after contextualization
+            "cache_hit": None,
+            "token_usage": None,
         }
         state = app.invoke(inputs)
         output: BISResponse = state["final_output"]
@@ -509,6 +616,7 @@ class Session:
             "domain": state.get("domain", ""),
             "cache_hit": state.get("cache_hit", False),
             **output.model_dump(),
+            "token_usage": state.get("token_usage", token_tracker.get_turn_summary(state.get("cache_hit", False))),
         }
 
 
@@ -585,6 +693,26 @@ def main() -> None:
                 title=title,
                 border_style="cyan",
             ))
+
+            # Awareness banner for Token Usage & Cost Savings
+            tu = payload.get("token_usage", {})
+            if tu:
+                turn_llm = tu.get("turn_llm_tokens", 0)
+                p_tok = tu.get("turn_prompt_tokens", 0)
+                c_tok = tu.get("turn_completion_tokens", 0)
+                s_llm = tu.get("session_total_llm_tokens", 0)
+                e_tok = tu.get("turn_embedding_tokens", 0)
+                provider = tu.get("embedding_provider", "")
+                saved = tu.get("session_total_saved_tokens", 0)
+                cache_badge = " [bold green]🎉 Cache Hit (0 Tokens Burned)![/bold green]" if payload.get("cache_hit") else ""
+
+                console.print(
+                    f"⚡ [bold cyan]Tokens:[/bold cyan] "
+                    f"Turn: [bold green]{turn_llm}[/bold green] (In: {p_tok}, Out: {c_tok}) | "
+                    f"Session Total: [bold magenta]{s_llm}[/bold magenta] | "
+                    f"Embedding: [dim]{e_tok} tokens ({provider})[/dim] | "
+                    f"Saved: [green]{saved} tokens[/green]{cache_badge}"
+                )
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Exiting...[/yellow]")
