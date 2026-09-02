@@ -2,7 +2,7 @@
 # Bureau of Indian Standards (BIS) Agentic RAG Assistant - Dependencies
 # =============================================================================
 
-# --- Core Agent Orchestration & Graph Workflow ---
+# --- Core Agent Orchestration & LangGraph ---
 langchain>=0.2.0
 langchain-core>=0.2.0
 langchain-community>=0.2.0
@@ -29,27 +29,17 @@ sounddevice>=0.4.6
 soundfile>=0.12.1
 pyttsx3>=2.90
 pywin32>=306; sys_platform == 'win32'
-pypiwin32>=223; sys_platform == 'win32'
 torch>=2.0.0
 numpy>=1.24.0
 
-# --- Web Scraping & Dynamic Portal Automation ---
+# --- Web Scraping & Portal Search ---
+requests>=2.32.0
+beautifulsoup4>=4.12.3
 playwright>=1.44.0
 nest-asyncio>=1.6.0
-beautifulsoup4>=4.12.3
-requests>=2.32.0
 
 # --- Document Ingestion & Parsing ---
 pypdf>=4.0.0
-pandas>=2.2.0
-openpyxl>=3.1.2
-lxml>=5.2.0
-html5lib>=1.1
-
-# --- Token Counting & HuggingFace Utilities ---
-tokenizers>=0.19.0
-huggingface-hub>=0.23.0
-tiktoken>=0.7.0
 
 # --- Terminal UI, Validation & Environment ---
 pydantic>=2.7.0
