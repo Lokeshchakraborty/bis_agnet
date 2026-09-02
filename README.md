@@ -9,38 +9,23 @@ A high-performance, modular conversational AI assistant for the **Bureau of Indi
 ```
 c:\python\BIS_AGENT\
 ├── main.py                     # High-level CLI & Voice REPL entry point
+├── app.py                      # FastAPI REST application definition & endpoints
+├── server.py                   # Uvicorn REST API server launcher
+├── test_api.py                 # Automated integration test suite for REST API
 ├── requirements.txt            # Project dependencies
 ├── .env                        # Environment credentials (API keys)
 ├── data/
 │   ├── cache.json              # SHA-256 persistent response cache
 │   ├── chroma_db/              # Chroma vector database collections
 │   └── procedures/             # BIS procedure documents (PDFs & TXTs)
-│       ├── certification/
-│       ├── hallmark/
-│       ├── laboratory/
-│       ├── manakonline/
-│       └── registration/
 └── src/
     ├── __init__.py             # Root package exports
     ├── config.py               # Centralized configuration & environment validation
     ├── schemas.py              # Pydantic schemas (Intent, BISResponse, AgentState, TokenTracker)
-    ├── agent/
-    │   ├── __init__.py         # Agent package exports (Session, build_graph)
-    │   ├── graph.py            # LangGraph StateGraph workflow definition
-    │   ├── nodes.py            # Graph node implementations & prompt engineering
-    │   └── session.py          # Session manager with 0-token cache bypass
-    ├── audio/
-    │   ├── __init__.py         # Audio package exports (LocalAudioHandler)
-    │   └── handler.py          # Whisper transcription & Pyttsx3 TTS
-    ├── tools/
-    │   ├── __init__.py         # Tools exports (ResponseCache, hybrid_retrieve, scraper)
-    │   ├── cache.py            # Response cache engine
-    │   ├── retriever.py        # Hybrid BM25 + dense retrieval + cosine reranking
-    │   └── scraper.py          # Multi-strategy BIS portal scraper
-    └── ingestion/
-        ├── __init__.py         # Ingestion exports
-        ├── build_vectordb.py   # ChromaDB vector ingestion pipeline
-        └── download_docs.py    # Procedure document downloader & reference seeder
+    ├── agent/                  # LangGraph workflow, nodes, and session management
+    ├── audio/                  # Whisper STT & Pyttsx3 TTS handlers
+    ├── tools/                  # Hybrid retriever, cache, scraper
+    └── ingestion/              # Document ingest & database builder
 ```
 
 ---
@@ -65,25 +50,51 @@ To build or update the Chroma vector collections:
 python src/ingestion/build_vectordb.py --clean
 ```
 
-### 3. Run the Assistant
+### 3. Run via CLI
 ```powershell
-# Interactive mode (type question or press Enter for microphone voice input)
+# Interactive CLI mode (type question or press Enter for microphone voice input)
 python main.py
 
-# Text-only mode (disables audio recording)
+# Text-only CLI mode (disables audio recording)
 python main.py --mode text
+```
 
-# Enable spoken audio responses (offline TTS)
-python main.py --speak
+### 4. Run REST API Server
+```powershell
+# Launch FastAPI server on http://127.0.0.1:8000
+python server.py
 
-# Clear cache before starting
-python main.py --clear-cache
+# Launch on custom host/port with auto-reload
+python server.py --host 0.0.0.0 --port 8000 --reload
+```
+Interactive Swagger documentation is available at **http://127.0.0.1:8000/docs** and ReDoc at **http://127.0.0.1:8000/redoc**.
+
+---
+
+## 📡 REST API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Check API health, model configurations, and DB status |
+| `POST` | `/api/v1/query` | Process a text turn using LangGraph RAG + session history |
+| `POST` | `/api/v1/voice-query` | Upload audio clip (`.wav`, `.mp3`, `.m4a`), transcribe via Whisper, and process turn |
+| `GET` | `/api/v1/sessions` | List active in-memory conversation sessions |
+| `DELETE` | `/api/v1/sessions/{session_id}` | Reset/delete specific session history |
+| `POST` | `/api/v1/cache/clear` | Purge persistent SHA-256 response cache |
+
+### Example Query Request (`POST /api/v1/query`)
+```json
+{
+  "query": "What is the procedure for getting a Gold Hallmarking license under BIS?",
+  "session_id": "user-session-101"
+}
 ```
 
 ---
 
 ## ⚡ Key Optimizations & Features
+- **FastAPI REST Service**: Production-ready web API with OpenAPI spec, Swagger interactive UI, CORS middleware, and structured Pydantic models.
 - **0-Token Cache Bypass**: Repeated queries are served instantly from the SHA-256 persistent cache with 0 LLM API calls.
 - **Hybrid Retrieval**: Combines BM25 sparse keyword search with dense embeddings and cosine similarity reranking for maximum context precision.
 - **Multilingual & Hinglish Support**: Responds in English, Hindi (Devanagari), or natural Hinglish matching the user's input style.
-- **Voice-Ready**: Offline Whisper speech-to-text transcription and pyttsx3 speech synthesis.
+- **Voice-Ready**: Offline Whisper speech-to-text transcription for voice audio uploads and local audio processing.

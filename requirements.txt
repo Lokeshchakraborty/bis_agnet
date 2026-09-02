@@ -46,3 +46,8 @@ pydantic>=2.7.0
 pydantic-settings>=2.2.0
 rich>=13.7.1
 python-dotenv>=1.0.1
+
+# --- REST API & Server ---
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9

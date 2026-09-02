@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import quote_plus
 
 import requests
@@ -33,8 +33,10 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-REQUEST_TIMEOUT = 15  # seconds
+REQUEST_TIMEOUT = 4  # seconds
 IS_CODE_RE = re.compile(r"\bIS[\s:]*\d[\d\-]+(?:[\s:]+\d{4})?", re.IGNORECASE)
+
+_scraper_cache: Dict[str, str] = {}
 
 
 def _clean(text: str) -> str:
@@ -52,6 +54,44 @@ def _extract_is_codes(text: str) -> List[str]:
             seen.add(code)
             result.append(code)
     return result
+
+
+def _format_amendments(item: dict) -> str:
+    """Format single or multiple amendments from live BIS portal item dictionary."""
+    # Check list fields first
+    raw_list = (
+        item.get("amendments")
+        or item.get("amendmentList")
+        or item.get("amendmentDetails")
+        or item.get("amendmentsList")
+    )
+    if isinstance(raw_list, list) and raw_list:
+        formatted = []
+        for a in raw_list:
+            if isinstance(a, dict):
+                no = a.get("amendmentNo") or a.get("amendmentNumber") or a.get("number") or a.get("title") or ""
+                dt = a.get("publishedOn") or a.get("date") or ""
+                txt = f"Amd {no}" if no else str(a)
+                if dt:
+                    txt += f" ({dt})"
+                formatted.append(txt)
+            elif a:
+                formatted.append(f"Amd {a}")
+        if formatted:
+            return ", ".join(formatted)
+
+    # Check scalar or text fields
+    amd_no = str(item.get("amendmentNumber") or item.get("amendmentNo") or "").strip()
+    no_of_amds = str(item.get("noOfAmendments") or item.get("totalAmendments") or "").strip()
+
+    if amd_no and no_of_amds and amd_no != no_of_amds:
+        return f"Amd {amd_no} (Total: {no_of_amds})"
+    elif amd_no:
+        return f"Amd {amd_no}"
+    elif no_of_amds:
+        return f"{no_of_amds} Amendment(s)"
+
+    return ""
 
 
 def _search_know_your_standards_api(query: str) -> Optional[str]:
@@ -105,9 +145,15 @@ def _search_know_your_standards_api(query: str) -> Optional[str]:
                 name = item.get("standardName") or ""
                 pub = item.get("publishedOn") or ""
                 valid = item.get("validUpto") or ""
+                amd = _format_amendments(item)
+                status_txt = item.get("status") or item.get("standardStatus") or ""
                 if num or name:
                     entry = f"  • {num}: {name}"
                     details = []
+                    if status_txt:
+                        details.append(f"Status: {status_txt}")
+                    if amd:
+                        details.append(f"Amendments: {amd}")
                     if pub:
                         details.append(f"Published: {pub}")
                     if valid:
@@ -253,34 +299,46 @@ def scrape_bis_portal(search_query: str) -> str:
     Returns:
         Formatted plain-text search results, or empty string on total failure.
     """
-    normalized = search_query.strip()
+    normalized = search_query.strip().lower()
+    if not normalized:
+        return ""
+
+    if normalized in _scraper_cache:
+        logger.info("Scraper cache HIT for query: %r", normalized)
+        return _scraper_cache[normalized]
+
     logger.info("Scraping BIS portal for query: %r", normalized)
 
     # 1. Official Know Your Standards JSON API
     result = _search_know_your_standards_api(normalized)
     if result:
+        _scraper_cache[normalized] = result
         return result
 
-    time.sleep(0.2)
+    time.sleep(0.1)
 
     # 2. WordPress Search API
     result = _search_bis_wp_api(normalized)
     if result:
+        _scraper_cache[normalized] = result
         return result
 
-    time.sleep(0.2)
+    time.sleep(0.1)
 
     # 3. Standards page HTML search
     result = _search_bis_standards_page(normalized)
     if result:
+        _scraper_cache[normalized] = result
         return result
 
-    time.sleep(0.2)
+    time.sleep(0.1)
 
     # 4. Playwright headless browser fallback
     result = _search_with_playwright(normalized)
     if result:
+        _scraper_cache[normalized] = result
         return result
 
     logger.warning("All scraping strategies returned empty results for '%s'", search_query)
+    _scraper_cache[normalized] = ""
     return ""

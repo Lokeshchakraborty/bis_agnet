@@ -21,6 +21,7 @@ from src.schemas import (
     IntentResult,
     TokenTracker,
 )
+from src.agent.guardrails import validate_and_sanitize_response
 from src.tools.cache import ResponseCache
 from src.tools.retriever import hybrid_retrieve
 from src.tools.scraper import scrape_bis_portal
@@ -98,18 +99,34 @@ def _needs_rewrite(query: str) -> bool:
     return any(w in FOLLOWUP_TRIGGERS for w in words[:3])
 
 
+FAST_INTENT_PATTERNS = [
+    (Intent.HALLMARK, re.compile(r"\b(hallmark|huid|ahc|assaying)\b", re.I)),
+    (Intent.REGISTRATION, re.compile(r"\b(crs|compulsory registration|meity)\b", re.I)),
+    (Intent.CERTIFICATION, re.compile(r"\b(isi mark|fmcs|qco|quality control order|cml number)\b", re.I)),
+    (Intent.LABORATORY, re.compile(r"\b(laboratory|testing lab|lrs|lims|prayogshala)\b", re.I)),
+    (Intent.MANAKONLINE, re.compile(r"\b(manakonline|manak online|e-bis|e-cml)\b", re.I)),
+]
+
+
 def _fast_classify(query: str) -> Optional[Intent]:
-    """Zero-token instant classification for IS codes and short greetings."""
+    """Zero-token instant classification for IS codes, short greetings, and clear domain keywords."""
     q_norm = query.strip().lower()
     # 1. Exact IS code pattern
     if re.search(r"\bIS\s*:?\s*\d{3,5}\b", query, re.IGNORECASE) or re.match(r"^\s*IS\s*\d+", query, re.IGNORECASE):
         return Intent.CATALOG_SEARCH
+
     # 2. Short greetings (1-3 words)
     words = re.findall(r"[\w\u0900-\u097F]+", q_norm)
     if 1 <= len(words) <= 3:
         phrase = " ".join(words)
         if phrase in COMMON_GREETINGS or words[0] in COMMON_GREETINGS:
             return Intent.CHAT
+
+    # 3. High-confidence domain keywords
+    for intent, pattern in FAST_INTENT_PATTERNS:
+        if pattern.search(q_norm):
+            return intent
+
     return None
 
 
@@ -306,7 +323,8 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
             system_prompt = (
                 "You are a helpful BIS (Bureau of Indian Standards) AI Assistant.\n"
                 "Keep the reply conversational and brief.\n"
-                "Leave applicable_standards, source_citation, and next_step empty for greetings.\n\n"
+                "Leave applicable_standards, source_citation, and next_step empty for greetings.\n"
+                "Set intent_localized to match the user's greeting language ('सामान्य बातचीत' for Hindi, 'General Chat' for Hinglish/English).\n\n"
                 "LANGUAGE MATCHING RULES:\n"
                 "- If the user greets or chats in Hindi (Devanagari, e.g. 'नमस्ते', 'आप कौन हैं?'), reply in polite Hindi.\n"
                 "- If the user greets or chats in Hinglish (Roman script, e.g. 'Namaste', 'Aap kaun ho?', 'Kya haal hai?'), reply in natural Hinglish.\n"
@@ -318,26 +336,39 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
                 "You are an expert BIS (Bureau of Indian Standards) AI Assistant.\n"
                 "Answer based on the provided context first.\n"
                 "If the context contains specific document excerpts, cite them in source_citation.\n\n"
-                "LANGUAGE AND SCRIPT ADAPTATION RULES (STRICT):\n"
-                "1. MATCH USER LANGUAGE AND SCRIPT:\n"
-                "   - If the user query is in HINDI (Devanagari script, e.g. 'हॉलमार्किंग के लिए कैसे आवेदन करें?'):\n"
-                "     Write core_response, next_step, and follow_up_prompt in natural, fluent Hindi (Devanagari script).\n"
-                "   - If the user query is in HINGLISH (Romanized Hindi / mixed Hindi-English, e.g. 'Hallmarking ke liye apply kaise karein?', 'Registration ka kya process hai?'):\n"
-                "     Write core_response, next_step, and follow_up_prompt in fluent, natural Hinglish (Hindi written using the English alphabet).\n"
-                "   - If the user query is in ENGLISH:\n"
-                "     Write core_response, next_step, and follow_up_prompt in English.\n\n"
-                "2. ACCURACY & TECHNICAL PRECISION PRESERVATION (NO ACCURACY DROP):\n"
+                "1. REGULATORY AMENDMENTS & DIGITAL MANUAL INTEGRATION (CRITICAL):\n"
+                "   - Account for recent BIS standard amendments in your core_response and compliance_metadata:\n"
+                "     * For mobile phones, IT equipment, and electronics (e.g. IS 16333 Part 3:2022 Amendment No. 1), digital/QR-code-based user manuals and instruction booklets ARE PERMITTED on product packaging provided clear access instructions are printed on the outer packaging.\n"
+                "     * Specify applicable amendments (e.g., 'Amendment No. 1 to IS 16333 (Part 3):2022') in compliance_metadata.amendments_applicable.\n"
+                "     * Set compliance_metadata.digital_qr_manual_allowed to true when applicable.\n"
+                "     * Set compliance_metadata.foreign_manufacturer_requires_air to true if foreign manufacturers require an Authorized Indian Representative (AIR) under FMCS or CRS.\n"
+                "     * Set compliance_metadata.testing_location (e.g., 'BIS-accredited domestic laboratory').\n"
+                "     * Set compliance_metadata.certificate_validity_years (default 2 years unless specified otherwise).\n\n"
+                "2. STRICT SCRIPT AND LANGUAGE MATCHING & ACTIONABLE MANAKONLINE ROUTING:\n"
+                "   - Match the user's exact script and language across ALL synthesized fields:\n"
+                "     * HINDI (Devanagari script, e.g. 'हॉलमार्किंग के लिए कैसे आवेदन करें?'):\n"
+                "       Write core_response, next_step, follow_up_prompt, AND intent_localized in pure, natural Hindi (Devanagari script).\n"
+                "       MUST include official Manakonline portal URL in next_step.\n"
+                "       Example next_step: 'आधिकारिक Manakonline पोर्टल (https://manakonline.in) पर जाएं और ऑनलाइन आवेदन (फॉर्म H-1) जमा करें।'\n"
+                "       Example follow_up_prompt: 'क्या आप एएचसी (AHC) केंद्रों की सूची या शुल्क संरचना के बारे में अधिक जानकारी चाहते हैं?'\n"
+                "       Example intent_localized: 'हॉलमार्क पंजीकरण'\n"
+                "     * HINGLISH (Romanized Hindi, e.g. 'Hallmarking ke liye apply kaise karein?'):\n"
+                "       Write core_response, next_step, follow_up_prompt, AND intent_localized in natural Hinglish using Roman script.\n"
+                "       Example next_step: 'Official Manakonline portal (https://manakonline.in) par jaakar online application (Form H-1) submit karein.'\n"
+                "       Example follow_up_prompt: 'Kya aap HUID fees ya test lab list ke baare mein aur jaan-kaari chahte hain?'\n"
+                "     * ENGLISH:\n"
+                "       Write core_response, next_step, follow_up_prompt, AND intent_localized in clear, professional English.\n"
+                "       Example next_step: 'Navigate to the official Manakonline portal (https://manakonline.in) to register and submit the online application form.'\n"
+                "       Example follow_up_prompt: 'Would you like information regarding HUID fee structures or testing lab locations?'\n\n"
+                "3. TECHNICAL PRECISION & UNTOUCHED REGULATORY CODES:\n"
                 "   - Keep all official IS codes, standard numbers, form numbers, and portal URLs exact and uncorrupted:\n"
-                "     * Standards (e.g. 'IS 1417', 'IS 2112', 'IS/ISO 9001')\n"
+                "     * Standards (e.g. 'IS 1417', 'IS 16333 (Part 3):2022', 'IS 2112', 'IS/ISO 9001')\n"
                 "     * Portal names & URLs (e.g. 'Manakonline portal', 'https://manakonline.in', 'e-BIS')\n"
-                "     * Technical abbreviations (e.g. 'HUID', 'AHC', 'CRS', 'FMCS', 'CML', 'QCO')\n"
-                "   - applicable_standards: List every relevant IS standard code formatted as 'IS XXXX - Description' (keep IS code exact).\n"
-                "   - source_citation: If context has '[Source N: filename]', cite the exact file name(s).\n"
-                "   - next_step: Give a concrete action (URL, form name, office to contact) in the matched language.\n"
-                "   - follow_up_prompt: Ask an engaging, helpful follow-up question in the matched language.\n"
-                "   - Be thorough — do not skip procedural steps.\n\n"
-                "3. INDIAN STANDARDS (IS CODE) IDENTIFICATION:\n"
-                "   - When queried about a specific IS code (e.g. 'IS 567', 'IS 12269', 'IS 4984'), if the portal scrape returns partial, related, or unindexed matches, use your authoritative BIS knowledge to identify the official standard title, product/chemical subject (e.g., IS 567 specifies Anhydrous Disodium Phosphate, IS 567:2024), and scope rather than claiming it does not exist. Clearly guide the user on how to access the official standard on the BIS Manakonline portal.\n\n"
+                "     * Technical abbreviations (e.g. 'HUID', 'AHC', 'CRS', 'FMCS', 'CML', 'QCO', 'AIR')\n"
+                "   - applicable_standards: List every relevant IS standard code formatted as 'IS XXXX - Description'.\n"
+                "   - source_citation: If context has '[Source N: filename]', cite the exact file name(s).\n\n"
+                "4. INDIAN STANDARDS (IS CODE) IDENTIFICATION:\n"
+                "   - When queried about a specific IS code (e.g. 'IS 567', 'IS 12269', 'IS 4984'), use your authoritative BIS knowledge to identify the official standard title, product subject, and scope if scrape results are partial. Clearly guide the user on how to access the official standard on Manakonline.\n\n"
                 "Chat history:\n{chat_history}\n\nContext:\n{context}"
             )
 
@@ -385,6 +416,13 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
                 core_response="I encountered an issue reaching the language model. Please try again.",
                 follow_up_prompt="Would you like to try rephrasing your question?",
             )
+
+        # 2b. Apply Guardrails & Validation
+        try:
+            raw_conf = 0.95 if is_chat or len(state.get("retrieved_context", "")) > 50 else 0.65
+            result = validate_and_sanitize_response(result, state["query"], intent_confidence=raw_conf)
+        except Exception as exc:
+            logger.warning("Guardrail validation error: %s", exc)
 
         # 3. Store in cache
         if CONFIG.cache_enabled and not is_chat and result:

@@ -14,6 +14,7 @@ ENV/
 data/chroma_db/
 data/chroma.sqlite3
 data/cache.json
+data/*.jsonl
 .DS_Store
 *.log
 **/__pycache__/

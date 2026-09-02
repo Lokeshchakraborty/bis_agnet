@@ -41,6 +41,7 @@ class _BM25Index:
 
 
 _bm25_cache: Dict[str, _BM25Index] = {}
+_doc_embedding_cache: Dict[str, List[float]] = {}
 
 
 def _get_bm25_index(domain: str, chroma_db: Chroma) -> Optional[_BM25Index]:
@@ -70,7 +71,32 @@ def _get_bm25_index(domain: str, chroma_db: Chroma) -> Optional[_BM25Index]:
 def reset_bm25_cache() -> None:
     """Clear all in-memory BM25 indices (useful after database re-ingestion)."""
     _bm25_cache.clear()
-    logger.info("Cleared BM25 cache.")
+    _doc_embedding_cache.clear()
+    logger.info("Cleared BM25 and document embedding cache.")
+
+
+def _embed_documents_cached(embeddings: Embeddings, texts: List[str]) -> List[List[float]]:
+    """Fetch cached document embeddings or compute only missing ones to eliminate API overhead."""
+    needed_idx: List[int] = []
+    needed_texts: List[str] = []
+    results: List[Optional[List[float]]] = [None] * len(texts)
+
+    for idx, text in enumerate(texts):
+        key = text[:200]
+        if key in _doc_embedding_cache:
+            results[idx] = _doc_embedding_cache[key]
+        else:
+            needed_idx.append(idx)
+            needed_texts.append(text)
+
+    if needed_texts:
+        computed = embeddings.embed_documents(needed_texts)
+        for idx, text, emb in zip(needed_idx, needed_texts, computed):
+            key = text[:200]
+            _doc_embedding_cache[key] = emb
+            results[idx] = emb
+
+    return [r for r in results if r is not None]
 
 
 def _cosine_rerank(
@@ -139,10 +165,10 @@ def hybrid_retrieve(
     if not merged:
         return [], "No relevant documents found in the knowledge base."
 
-    # 4. Rerank
+    # 4. Rerank with cached document embeddings
     try:
         query_emb = embeddings.embed_query(query)
-        doc_embs = embeddings.embed_documents([doc.page_content for doc in merged])
+        doc_embs = _embed_documents_cached(embeddings, [doc.page_content for doc in merged])
         top_docs = _cosine_rerank(merged, query_emb, doc_embs, top_n=rerank_top_n)
     except Exception as exc:
         logger.warning("Reranking failed (%s) - using top candidates directly.", exc)
