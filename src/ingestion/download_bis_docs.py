@@ -13,10 +13,18 @@ Run once before ingestion:
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from pathlib import Path
 from urllib.parse import urlparse
+
+if "SSLKEYLOGFILE" in os.environ:
+    try:
+        with open(os.environ["SSLKEYLOGFILE"], "a"):
+            pass
+    except Exception:
+        os.environ.pop("SSLKEYLOGFILE", None)
 
 import requests
 from bs4 import BeautifulSoup

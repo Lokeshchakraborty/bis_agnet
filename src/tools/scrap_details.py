@@ -18,10 +18,18 @@ Returns a plain-text string of extracted results (empty string on total failure)
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from typing import Optional
 from urllib.parse import quote_plus
+
+if "SSLKEYLOGFILE" in os.environ:
+    try:
+        with open(os.environ["SSLKEYLOGFILE"], "a"):
+            pass
+    except Exception:
+        os.environ.pop("SSLKEYLOGFILE", None)
 
 import requests
 from bs4 import BeautifulSoup
@@ -68,7 +76,85 @@ def _extract_is_codes(text: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Strategy 1: BIS WordPress REST API
+# Strategy 1: BIS 'Know Your Standards' Official API (standards.bis.gov.in)
+# ---------------------------------------------------------------------------
+def _search_know_your_standards_api(query: str) -> Optional[str]:
+    """
+    Directly queries the BIS 'Know Your Standards' JSON API (standards.bis.gov.in).
+    Returns accurate, structured details of standard numbers, titles, and publication dates.
+    """
+    # Extract clean IS code or keywords from conversational queries
+    is_match = re.search(r"\bIS\s*:?\s*\d+[\d\-]*(?:\s*\(Part\s*\d+\))?", query, re.IGNORECASE)
+    search_candidates: list[str] = []
+    if is_match:
+        clean_code = re.sub(r"\s+", " ", is_match.group(0).replace(":", " ")).strip()
+        search_candidates.append(clean_code)
+
+    # Strip conversational filler words for fallback search
+    cleaned = re.sub(
+        r"\b(what|is|tell|me|about|give|details|of|specification|specifications|standards|standard|for|kya|hai|batao|bataiye|ke|liye)\b",
+        "",
+        query,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"[^\w\s]", " ", cleaned).strip()
+    if cleaned and cleaned not in search_candidates:
+        search_candidates.append(cleaned)
+    if query.strip() not in search_candidates:
+        search_candidates.append(query.strip())
+
+    for search_term in search_candidates:
+        try:
+            url = "https://standardsadmin.bis.gov.in/review-service//searchKnowStandards"
+            headers = {
+                **HEADERS,
+                "Referer": "https://standards.bis.gov.in/",
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/plain, */*",
+            }
+            payload = {
+                "searchText": search_term,
+                "token": None,
+                "refreshToken": None,
+                "clientId": None,
+                "clientSecret": None,
+                "sub": None,
+            }
+            resp = requests.post(url, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            items = data.get("data")
+            if not isinstance(items, list) or not items:
+                continue
+
+            lines: list[str] = [f"BIS 'Know Your Standards' results for '{search_term}':"]
+            for item in items[:10]:
+                num = item.get("standardNumber") or item.get("matched_standard") or ""
+                name = item.get("standardName") or ""
+                pub = item.get("publishedOn") or ""
+                valid = item.get("validUpto") or ""
+                if num or name:
+                    entry = f"  • {num}: {name}"
+                    details = []
+                    if pub:
+                        details.append(f"Published: {pub}")
+                    if valid:
+                        details.append(f"Valid Upto: {valid}")
+                    if details:
+                        entry += f" ({', '.join(details)})"
+                    lines.append(entry)
+
+            if len(lines) > 1:
+                return "\n".join(lines)
+        except Exception as exc:
+            logger.debug("BIS Know Your Standards API failed for '%s': %s", search_term, exc)
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Strategy 2: BIS WordPress REST API
 # ---------------------------------------------------------------------------
 def _search_bis_wp_api(query: str) -> Optional[str]:
     """
@@ -77,6 +163,7 @@ def _search_bis_wp_api(query: str) -> Optional[str]:
     """
     try:
         url = f"https://www.bis.gov.in/wp-json/wp/v2/search?search={quote_plus(query)}&per_page=10&type=post"
+        # url=f"https://standards.bis.gov.in/website/know-your-standards?searchTerm=567"
         resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
@@ -286,15 +373,16 @@ def scrape_bis_portal(search_query: str) -> str:
     """
     Search the BIS portal for standards, IS codes, or product information.
 
-    Tries four strategies in order (fastest/simplest first):
-      1. BIS WordPress REST API (JSON)
-      2. BIS national-standards search page (HTML + IS-code regex)
-      3. Liferay AJAX endpoint (JSON)
-      4. Playwright headless browser (JS-rendered, slowest)
+    Tries five strategies in order (fastest/most accurate first):
+      1. BIS 'Know Your Standards' Official JSON API (standards.bis.gov.in)
+      2. BIS WordPress REST API (JSON)
+      3. BIS national-standards search page (HTML + IS-code regex)
+      4. Liferay AJAX endpoint (JSON)
+      5. Playwright headless browser (JS-rendered, slowest)
 
     Args:
         search_query: Natural-language or IS-code query, e.g.
-                      "petroleum products IS code" or
+                      "petroleum products IS code", "IS 405", or
                       "certification procedure for cement".
 
     Returns:
@@ -306,7 +394,15 @@ def scrape_bis_portal(search_query: str) -> str:
     # Normalize: strip common misspellings / expand abbreviations
     normalized = search_query.strip()
 
-    # Strategy 1 — WP REST API (fast, structured)
+    # Strategy 1 — Know Your Standards Official API (fastest, most accurate)
+    result = _search_know_your_standards_api(normalized)
+    if result:
+        logger.info("BIS Know Your Standards API returned results")
+        return result
+
+    time.sleep(0.3)
+
+    # Strategy 2 — WP REST API (fast, structured)
     result = _search_bis_wp_api(normalized)
     if result:
         logger.info("BIS WP API returned results")
@@ -314,7 +410,7 @@ def scrape_bis_portal(search_query: str) -> str:
 
     time.sleep(0.3)
 
-    # Strategy 2 — Standards page + regex
+    # Strategy 3 — Standards page + regex
     result = _search_bis_standards_page(normalized)
     if result:
         logger.info("BIS standards page returned results")
@@ -322,7 +418,7 @@ def scrape_bis_portal(search_query: str) -> str:
 
     time.sleep(0.3)
 
-    # Strategy 3 — Liferay AJAX
+    # Strategy 4 — Liferay AJAX
     result = _search_bis_liferay_ajax(normalized)
     if result:
         logger.info("Liferay AJAX returned results")
@@ -330,7 +426,7 @@ def scrape_bis_portal(search_query: str) -> str:
 
     time.sleep(0.3)
 
-    # Strategy 4 — Playwright (JS, slowest, most complete)
+    # Strategy 5 — Playwright (JS, slowest, most complete)
     result = _search_with_playwright(normalized)
     if result:
         logger.info("Playwright returned results")

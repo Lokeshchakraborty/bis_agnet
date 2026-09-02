@@ -14,11 +14,27 @@ Architecture:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import logging
 import os
+import re
 import sys
 import time
+
+if "SSLKEYLOGFILE" in os.environ:
+    try:
+        with open(os.environ["SSLKEYLOGFILE"], "a"):
+            pass
+    except Exception:
+        os.environ.pop("SSLKEYLOGFILE", None)
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
@@ -44,12 +60,19 @@ from langchain_mistralai import MistralAIEmbeddings
 # --------------------------------------------------------------------------- #
 PROJECT_ROOT = Path(__file__).resolve().parent
 SRC_DIR = PROJECT_ROOT / "src"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from tools.scrap_details import scrape_bis_portal          # noqa: E402
-from tools.retrieval_tools import hybrid_retrieve          # noqa: E402
-from tools.response_cache import ResponseCache             # noqa: E402
+try:
+    from src.tools.scrap_details import scrape_bis_portal          # noqa: E402
+    from src.tools.retrieval_tools import hybrid_retrieve          # noqa: E402
+    from src.tools.response_cache import ResponseCache             # noqa: E402
+except ImportError:
+    from tools.scrap_details import scrape_bis_portal              # noqa: E402
+    from tools.retrieval_tools import hybrid_retrieve              # noqa: E402
+    from tools.response_cache import ResponseCache                 # noqa: E402
 
 load_dotenv()
 console = Console()
@@ -105,7 +128,7 @@ def validate_environment() -> None:
 T = TypeVar("T")
 
 
-def with_retry(max_retries: int = CONFIG.max_retries, backoff: float = CONFIG.retry_backoff_seconds):
+def with_retry(max_retries: int = 5, backoff: float = CONFIG.retry_backoff_seconds):
     def decorator(fn: Callable[..., T]) -> Callable[..., T]:
         @wraps(fn)
         def wrapper(*args, **kwargs) -> T:
@@ -117,7 +140,16 @@ def with_retry(max_retries: int = CONFIG.max_retries, backoff: float = CONFIG.re
                     last_exc = exc
                     if attempt == max_retries:
                         break
-                    wait = backoff * (2 ** (attempt - 1))
+                    err_str = str(exc)
+                    if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        # Extract exact retry delay from Gemini error message if present (e.g. 'retry in 17.5s' or 'retryDelay': '17s')
+                        m = re.search(r"retry in (\d+(?:\.\d+)?)s", err_str, re.IGNORECASE) or re.search(r"retryDelay['\":\s]+(\d+)s", err_str, re.IGNORECASE)
+                        if m:
+                            wait = float(m.group(1)) + 1.5
+                        else:
+                            wait = max(15.0 * attempt, backoff * (2 ** (attempt - 1)))
+                    else:
+                        wait = backoff * (2 ** (attempt - 1))
                     logger.warning(
                         "%s failed (attempt %d/%d): %s - retrying in %.1fs",
                         fn.__name__, attempt, max_retries, exc, wait,
@@ -257,15 +289,17 @@ class AgentState(TypedDict):
 # Component initialization
 # --------------------------------------------------------------------------- #
 def initialize_components():
-    # provider = CONFIG.embedding_provider.lower()
-    # if provider == "fastembed":
-    #     from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
-    #     embeddings = FastEmbedEmbeddings(model_name=CONFIG.embedding_model)
-    # elif provider == "google":
-    #     embeddings = GoogleGenerativeAIEmbeddings(model=CONFIG.embedding_model)
-    # else:
-    #     embeddings = OllamaEmbeddings(model=CONFIG.embedding_model, base_url=CONFIG.embedding_base_url)
-    embeddings = MistralAIEmbeddings(model=CONFIG.embedding_model)
+    provider = CONFIG.embedding_provider.lower()
+    if provider == "fastembed":
+        from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+        embeddings = FastEmbedEmbeddings(model_name=CONFIG.embedding_model)
+    elif provider == "google":
+        embeddings = GoogleGenerativeAIEmbeddings(model=CONFIG.embedding_model)
+    elif provider in ("mistral", "mistralaiembeddings"):
+        from langchain_mistralai import MistralAIEmbeddings
+        embeddings = MistralAIEmbeddings(model=CONFIG.embedding_model)
+    else:
+        embeddings = OllamaEmbeddings(model=CONFIG.embedding_model, base_url=CONFIG.embedding_base_url)
     llm = ChatGoogleGenerativeAI(model=CONFIG.llm_model, temperature=CONFIG.llm_temperature)
 
     # Catalog retriever (default collection)
@@ -301,6 +335,54 @@ def _format_history(chat_history: List[Tuple[str, str]]) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Token-Saving Optimization Helpers
+# --------------------------------------------------------------------------- #
+FOLLOWUP_TRIGGERS = {
+    "yes", "sure", "ok", "okay", "explain", "more", "tell", "haan", "ha", "theek",
+    "batao", "bataiye", "aur", "and", "also", "fees", "fee", "cost", "charge",
+    "charges", "document", "documents", "paper", "papers", "this", "that", "it",
+    "these", "those", "iska", "iske", "iski", "isme", "unka", "inhe", "kya", "kaise",
+    "kitna", "kitni", "next", "aage", "fir", "phir", "help", "madad", "sahayata"
+}
+
+COMMON_GREETINGS = {
+    "hi", "hello", "hey", "namaste", "namaskar", "namastey", "नमस्ते", "नमस्कार",
+    "kaise ho", "kya haal hai", "good morning", "good evening", "good afternoon",
+    "thanks", "thank you", "dhanyawaad", "shukriya", "धन्यवाद", "शुक्रिया",
+    "who are you", "aap kaun ho", "आप कौन हैं", "help", "madad"
+}
+
+
+def _needs_rewrite(query: str) -> bool:
+    """Check if query is dependent on prior conversational context or is already self-contained."""
+    q = query.strip().lower()
+    words = re.findall(r"[\w\u0900-\u097F]+", q)
+    if not words:
+        return False
+    if len(words) <= 3:
+        return True
+    first_word = words[0]
+    if first_word in {"and", "aur", "also", "or", "what", "how", "kya", "kaise", "kitna", "kitni"}:
+        return True
+    return any(w in FOLLOWUP_TRIGGERS for w in words[:3])
+
+
+def _fast_classify(query: str) -> Optional[Intent]:
+    """Zero-token instant classification for exact IS codes and short greetings."""
+    q_norm = query.strip().lower()
+    # 1. Exact IS code pattern (e.g. IS 12269, IS4984, IS:15820)
+    if re.search(r"\bIS\s*:?\s*\d{3,5}\b", query, re.IGNORECASE) or re.match(r"^\s*IS\s*\d+", query, re.IGNORECASE):
+        return Intent.CATALOG_SEARCH
+    # 2. Short greetings and pleasantries (1-3 words)
+    words = re.findall(r"[\w\u0900-\u097F]+", q_norm)
+    if 1 <= len(words) <= 3:
+        phrase = " ".join(words)
+        if phrase in COMMON_GREETINGS or words[0] in COMMON_GREETINGS:
+            return Intent.CHAT
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # Graph nodes
 # --------------------------------------------------------------------------- #
 @with_retry()
@@ -311,25 +393,39 @@ def _rewrite_query(last_agent_msg: str, query: str) -> str:
          "The agent's last message may contain a section tagged '[I asked as follow-up]: ...' "
          "which is the exact follow-up question the agent posed to the user.\n\n"
          "Rules:\n"
-         "1. If the user replies with 'yes', 'sure', 'ok', 'explain', 'tell me more', or any "
-         "short affirmation — look at the '[I asked as follow-up]' section and turn THAT "
-         "question into the standalone query.\n"
-         "2. If the user replies with a specific answer or correction to the follow-up, "
+         "1. If the user replies with 'yes', 'sure', 'ok', 'explain', 'tell me more', 'haan', 'ha', "
+         "'batao', 'bataiye', 'theek hai', or any short affirmation — look at the '[I asked as follow-up]' "
+         "section and turn THAT question into the standalone query.\n"
+         "2. Preserve the user's language style (English, Hindi, or Hinglish).\n"
+         "3. If the user replies with a specific answer or correction to the follow-up, "
          "incorporate that answer into the standalone query.\n"
-         "3. If there is no follow-up section, use the full agent answer as context to "
+         "4. If there is no follow-up section, use the full agent answer as context to "
          "understand what the user is referring to.\n"
-         "4. Output ONLY the standalone query — no preamble, no explanation."),
+         "5. Output ONLY the standalone query — no preamble, no explanation."),
         ("human", "Agent's Last Message:\n{last_agent_msg}\n\nUser's Reply: {query}"),
     ])
     msg = prompt.format_messages(last_agent_msg=last_agent_msg, query=query)
     resp = llm.invoke(msg)
     token_tracker.add_llm_usage(getattr(resp, "usage_metadata", None))
-    return str(resp.content).strip()
+
+    content = resp.content
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and "text" in part:
+                text_parts.append(part["text"])
+            elif isinstance(part, str):
+                text_parts.append(part)
+        return " ".join(text_parts).strip()
+    return str(content).strip()
 
 
 def contextualize_query(state: AgentState) -> dict:
-    """Rewrite the latest user turn into a standalone query using chat history."""
+    """Rewrite query using chat history only when needed, skipping LLM on self-contained turns."""
     if not state["chat_history"]:
+        sq = state["query"]
+    elif not _needs_rewrite(state["query"]):
+        logger.info("Self-contained query detected — skipping _rewrite_query LLM call (saved ~350 tokens)")
         sq = state["query"]
     else:
         try:
@@ -345,15 +441,16 @@ def contextualize_query(state: AgentState) -> dict:
 def _classify(query: str) -> Intent:
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are a highly accurate intent classification router for the Bureau of Indian Standards (BIS) AI Assistant.
+The user query may be in English, Hinglish (Romanized Hindi/English mix), or pure Hindi (Devanagari).
 Classify the user's standalone query into EXACTLY ONE of the following 7 categories:
 
-1. chat - Greetings, thanks, who are you, general acknowledgments (hi, hello, yes, no, ok, help).
-2. hallmark - Hallmark, HUID, gold, silver, jewellery, jeweler, carat, purity, AHC, assaying center.
+1. chat - Greetings, pleasantries, identity/capability questions, asking for help generally without specifying a domain (e.g. hi, hello, namaste, kaise ho, aap kaun ho, kya kar sakte ho, aap meri kya sahayata kar sakte hain, नमस्ते, आप कौन हैं, आप मेरी किस प्रकार सहायता कर सकते हैं, help, thanks, ok, shukriya, dhanyawaad).
+2. hallmark - Hallmark, HUID, gold, silver, jewellery, sona, chandi, aabhooshan, carat, purity, AHC, assaying center.
 3. registration - CRS, Compulsory Registration Scheme, electronics, IT goods, laptops, mobiles, solar panels, MeitY.
-4. certification - ISI mark, FMCS, Scheme-I, QCO, Quality Control Order, factory audit, CML number, AIR, license.
-5. laboratory - Laboratory, testing lab, LRS, test report, NABL, LIMS, recognized lab, calibration.
-6. manakonline - Manak online, e-BIS, e-CML, portal, login, password, upload document, online application.
-7. catalog_search - IS code, IS number, standard, product name (cement, pipes, steel, petroleum, water, toys, etc.).
+4. certification - ISI mark, FMCS, Scheme-I, QCO, Quality Control Order, factory audit, CML number, AIR, license, manak praman-patra.
+5. laboratory - Laboratory, testing lab, LRS, test report, NABL, LIMS, recognized lab, calibration, prayogshala.
+6. manakonline - Manak online, e-BIS, e-CML, portal, login, password, upload document, online application, portal registration.
+7. catalog_search - IS code, IS number, standard, product name (cement, pipes, steel, petroleum, water, toys, khilona, paani, etc.).
 
 CRITICAL: Any product name mention defaults to catalog_search."""),
         ("human", "{query}"),
@@ -371,7 +468,11 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
 
 
 def intent_classifier(state: AgentState) -> dict:
-    """Classify the standalone query into one of 7 intents."""
+    """Classify the standalone query into one of 7 intents with 0-token fast routing."""
+    fast_intent = _fast_classify(state["standalone_query"])
+    if fast_intent:
+        logger.info("Fast 0-token classification: '%s' -> %s", state["standalone_query"], fast_intent.value)
+        return {"intent": fast_intent.value}
     try:
         intent = _classify(state["standalone_query"])
     except Exception as exc:  # noqa: BLE001
@@ -422,21 +523,38 @@ def _scrape(query: str) -> str:
 
 def retrieve_catalog(state: AgentState) -> dict:
     """
-    IS-code / product lookups: combine live BIS portal scraping (primary)
-    with local Chroma DB (supplementary).
+    IS-code / product lookups: run live BIS portal scraping AND local Chroma DB
+    retrieval concurrently in parallel threads to cut response latency in half.
     """
-    token_tracker.add_embedding_text(state["standalone_query"])
-    docs = catalog_retriever.invoke(state["standalone_query"])
-    db_context = "\n".join(d.page_content for d in docs) if docs else "No local catalog entries found."
+    sq = state["standalone_query"]
+    token_tracker.add_embedding_text(sq)
 
-    try:
-        scraped = _scrape(state["standalone_query"])
-        if not scraped or not scraped.strip():
-            scraped = "(scraper returned no content for this query)"
-        logger.info("Scraper returned %d chars", len(scraped))
-    except Exception as exc:  # noqa: BLE001
-        console.print(f"[yellow]Warning: BIS portal scrape failed ({exc}). Using local DB only.[/yellow]")
-        scraped = "Live portal data unavailable."
+    def _get_db_docs():
+        try:
+            docs = catalog_retriever.invoke(sq)
+            print(sq)
+            return "\n".join(d.page_content for d in docs) if docs else "No local catalog entries found."
+            
+        except Exception as exc:
+            logger.warning("Local catalog retrieval failed: %s", exc)
+            return "No local catalog entries found."
+
+    def _get_scraped_data():
+        try:
+            scraped = _scrape(sq)
+            if not scraped or not scraped.strip():
+                return "(scraper returned no content for this query)"
+            logger.info("Scraper returned %d chars", len(scraped))
+            return scraped
+        except Exception as exc:
+            logger.warning("BIS portal scrape failed (%s). Using local DB only.", exc)
+            return "Live portal data unavailable."
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_db = executor.submit(_get_db_docs)
+        future_scrape = executor.submit(_get_scraped_data)
+        db_context = future_db.result()
+        scraped = future_scrape.result()
 
     combined = (
         f"[LIVE PORTAL DATA]:\n{scraped}\n\n"
@@ -450,22 +568,40 @@ def retrieve_catalog(state: AgentState) -> dict:
 def _synthesize(chat_history: str, context: str, query: str, is_chat: bool, domain: str) -> BISResponse:
     if is_chat:
         system_prompt = (
-            "You are a helpful BIS (Bureau of Indian Standards) AI Assistant. "
-            "Keep the reply conversational and brief. "
-            "Leave applicable_standards, source_citation, and next_step empty for greetings.\n"
+            "You are a helpful BIS (Bureau of Indian Standards) AI Assistant.\n"
+            "Keep the reply conversational and brief.\n"
+            "Leave applicable_standards, source_citation, and next_step empty for greetings.\n\n"
+            "LANGUAGE MATCHING RULES:\n"
+            "- If the user greets or chats in Hindi (Devanagari, e.g. 'नमस्ते', 'आप कौन हैं?'), reply in polite Hindi.\n"
+            "- If the user greets or chats in Hinglish (Roman script, e.g. 'Namaste', 'Aap kaun ho?', 'Kya haal hai?'), reply in natural Hinglish.\n"
+            "- If the user greets in English ('Hello', 'Hi'), reply in English.\n\n"
             "Chat history:\n{chat_history}"
         )
     else:
         system_prompt = (
-            "You are an expert BIS (Bureau of Indian Standards) AI Assistant. "
-            "Answer based on the provided context first. "
+            "You are an expert BIS (Bureau of Indian Standards) AI Assistant.\n"
+            "Answer based on the provided context first.\n"
             "If the context contains specific document excerpts, cite them in source_citation.\n\n"
-            "RULES:\n"
-            "1. applicable_standards: Always list every relevant IS code you know for the topic, "
-            "formatted as 'IS XXXX - one-line description'. Never leave empty for product/domain queries.\n"
-            "2. source_citation: If context has '[Source N: filename]', cite that file.\n"
-            "3. next_step: Give a concrete action (URL, form name, office to contact).\n"
-            "4. Be thorough — do not skip steps for procedural queries.\n\n"
+            "LANGUAGE AND SCRIPT ADAPTATION RULES (STRICT):\n"
+            "1. MATCH USER LANGUAGE AND SCRIPT:\n"
+            "   - If the user query is in HINDI (Devanagari script, e.g. 'हॉलमार्किंग के लिए कैसे आवेदन करें?'):\n"
+            "     Write core_response, next_step, and follow_up_prompt in natural, fluent Hindi (Devanagari script).\n"
+            "   - If the user query is in HINGLISH (Romanized Hindi / mixed Hindi-English, e.g. 'Hallmarking ke liye apply kaise karein?', 'Registration ka kya process hai?'):\n"
+            "     Write core_response, next_step, and follow_up_prompt in fluent, natural Hinglish (Hindi written using the English alphabet).\n"
+            "   - If the user query is in ENGLISH:\n"
+            "     Write core_response, next_step, and follow_up_prompt in English.\n\n"
+            "2. ACCURACY & TECHNICAL PRECISION PRESERVATION (NO ACCURACY DROP):\n"
+            "   - Keep all official IS codes, standard numbers, form numbers, and portal URLs exact and uncorrupted:\n"
+            "     * Standards (e.g. 'IS 1417', 'IS 2112', 'IS/ISO 9001')\n"
+            "     * Portal names & URLs (e.g. 'Manakonline portal', 'https://manakonline.in', 'e-BIS')\n"
+            "     * Technical abbreviations (e.g. 'HUID', 'AHC', 'CRS', 'FMCS', 'CML', 'QCO')\n"
+            "   - applicable_standards: List every relevant IS standard code formatted as 'IS XXXX - Description' (keep IS code exact).\n"
+            "   - source_citation: If context has '[Source N: filename]', cite the exact file name(s).\n"
+            "   - next_step: Give a concrete action (URL, form name, office to contact) in the matched language.\n"
+            "   - follow_up_prompt: Ask an engaging, helpful follow-up question in the matched language.\n"
+            "   - Be thorough — do not skip procedural steps.\n\n"
+            "3. INDIAN STANDARDS (IS CODE) IDENTIFICATION:\n"
+            "   - When queried about a specific IS code (e.g. 'IS 567', 'IS 12269', 'IS 4984'), if the portal scrape returns partial, related, or unindexed matches, use your authoritative BIS knowledge to identify the official standard title, product/chemical subject (e.g., IS 567 specifies Anhydrous Disodium Phosphate, IS 567:2024), and scope rather than claiming it does not exist. Clearly guide the user on how to access the official standard on the BIS Manakonline portal.\n\n"
             "Chat history:\n{chat_history}\n\nContext:\n{context}"
         )
 
@@ -486,10 +622,11 @@ def synthesize_response(state: AgentState) -> dict:
     """Single node that produces the unified JSON schema for every intent."""
     is_chat = state["intent"] == Intent.CHAT.value
     
-    # 1. Cache lookup: If query has been synthesized before, return immediately (0 LLM tokens)
+    # 1. Dual-Key Cache lookup (Tier 1: raw query, Tier 2: standalone query)
     if CONFIG.cache_enabled and not is_chat:
-        cache_key = response_cache.make_key(state["intent"], state["standalone_query"])
-        cached = response_cache.get(cache_key)
+        key_raw = response_cache.make_key(state["intent"], state.get("query", ""))
+        key_standalone = response_cache.make_key(state["intent"], state["standalone_query"])
+        cached = response_cache.get(key_raw) or response_cache.get(key_standalone)
         if cached:
             token_tracker.record_cache_hit(estimated_saved=750)
             result = BISResponse(**{
@@ -522,12 +659,16 @@ def synthesize_response(state: AgentState) -> dict:
         )
 
     # Store in cache after successful synthesis (non-chat only),
-    # keyed on standalone_query so follow-up answers don't collide.
+    # keyed on both standalone_query and raw self-contained query.
     if CONFIG.cache_enabled and not is_chat and result:
         try:
-            cache_key = response_cache.make_key(state["intent"], state["standalone_query"])
             payload = {"intent": state["intent"], "domain": state.get("domain", ""), **result.model_dump()}
-            response_cache.set(cache_key, payload)
+            key_standalone = response_cache.make_key(state["intent"], state["standalone_query"])
+            response_cache.set(key_standalone, payload)
+            raw_q = state.get("query", "").strip()
+            if raw_q and len(raw_q.split()) >= 3:
+                key_raw = response_cache.make_key(state["intent"], raw_q)
+                response_cache.set(key_raw, payload)
         except Exception:
             pass
 
@@ -582,10 +723,33 @@ class Session:
 
     def run_turn(self, user_query: str) -> dict:
         token_tracker.reset_turn()
-        # Full graph run — cache check happens INSIDE synthesize_response node
-        # using the standalone_query (after contextualization), not the raw input.
-        # This prevents short follow-up words like "yes" from incorrectly hitting
-        # stale cache entries.
+
+        # 1. Front-Loaded Cache Check: If exact raw query was synthesized before under any domain,
+        # return immediately without running the graph (0 LLM calls, True 0 token burn).
+        if CONFIG.cache_enabled:
+            fast_intent = _fast_classify(user_query)
+            intents_to_check = [fast_intent.value] if fast_intent else [d.value for d in DOMAIN_COLLECTIONS] + [Intent.CATALOG_SEARCH.value]
+            for intent_str in intents_to_check:
+                key = response_cache.make_key(intent_str, user_query)
+                cached = response_cache.get(key)
+                if cached:
+                    token_tracker.record_cache_hit(estimated_saved=750)
+                    output = BISResponse(**{k: cached[k] for k in BISResponse.model_fields if k in cached})
+                    self.history.append((user_query, output.core_response))
+                    return {
+                        "query": user_query,
+                        "standalone_query": user_query,
+                        "chat_history": list(self.history),
+                        "intent": cached.get("intent", intent_str),
+                        "domain": cached.get("domain", intent_str),
+                        "retrieved_context": "",
+                        "final_output": output,
+                        "cache_key": key,
+                        "cache_hit": True,
+                        "token_usage": token_tracker.get_turn_summary(cache_hit=True),
+                    }
+
+        # 2. Graph execution
         inputs: AgentState = {
             "query": user_query,
             "standalone_query": "",
@@ -630,6 +794,10 @@ def parse_args() -> argparse.Namespace:
         help="'auto' allows empty-input voice capture; 'text' disables voice.",
     )
     parser.add_argument(
+        "--speak", action="store_true",
+        help="Speak core responses aloud using offline voice synthesis.",
+    )
+    parser.add_argument(
         "--clear-cache", action="store_true",
         help="Clear the response cache before starting.",
     )
@@ -647,13 +815,17 @@ def main() -> None:
     console.print(Panel.fit(
         "[bold green]BIS Agentic RAG Assistant[/bold green]\n"
         f"[dim]Cache: {'ON' if CONFIG.cache_enabled else 'OFF'} | "
-        f"Retrieval: Hybrid BM25+Dense (rerank top-{CONFIG.rerank_top_n})[/dim]",
+        f"Retrieval: Parallel BM25 + Dense + Live Scrape (top-{CONFIG.rerank_top_n}) | "
+        f"Voice Output: {'ON' if args.speak or args.mode == 'auto' else 'OFF'}[/dim]",
         border_style="green",
     ))
 
     audio_handler = None
-    if args.mode == "auto":
-        from tools.audio_handler import LocalAudioHandler
+    if args.mode == "auto" or args.speak:
+        try:
+            from src.tools.audio_handler import LocalAudioHandler
+        except ImportError:
+            from tools.audio_handler import LocalAudioHandler
         audio_handler = LocalAudioHandler(model_size="base")
     else:
         console.print("[dim]Voice input disabled (--mode text).[/dim]")
@@ -666,7 +838,7 @@ def main() -> None:
             user_input = input().strip()
 
             if user_input == "":
-                if audio_handler is None:
+                if audio_handler is None or args.mode == "text":
                     console.print("[yellow]Voice input is disabled. Type your question.[/yellow]")
                     continue
                 audio_file = audio_handler.record_audio()
@@ -713,6 +885,10 @@ def main() -> None:
                     f"Embedding: [dim]{e_tok} tokens ({provider})[/dim] | "
                     f"Saved: [green]{saved} tokens[/green]{cache_badge}"
                 )
+
+            # Optional Voice Playback
+            if (args.speak or (args.mode == "auto" and user_input == "")) and audio_handler and payload.get("core_response"):
+                audio_handler.speak_text(payload["core_response"])
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Exiting...[/yellow]")

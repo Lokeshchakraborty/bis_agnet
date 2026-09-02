@@ -1,4 +1,4 @@
-﻿.env
+.env
 .env.*
 __pycache__/
 *.pyc
@@ -13,5 +13,7 @@ venv/
 ENV/
 data/chroma_db/
 data/chroma.sqlite3
+data/cache.json
 .DS_Store
 *.log
+**/__pycache__/

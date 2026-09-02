@@ -63,3 +63,14 @@ class LocalAudioHandler:
             return text
         except Exception as e:
             return f"Audio Error: {str(e)}"
+
+    def speak_text(self, text: str) -> None:
+        """Speaks the response text aloud using local TTS engine."""
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+            engine.setProperty("rate", 175)  # Natural speaking rate
+            engine.say(text)
+            engine.runAndWait()
+        except Exception as exc:
+            warnings.warn(f"Audio playback warning: {exc}", stacklevel=2)

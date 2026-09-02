@@ -1,4 +1,4 @@
-﻿"""
+"""
 BIS ChromaDB Ingestion
 ======================
 Ingests all PDFs and .txt files from data/procedures/<domain>/ into separate
@@ -16,6 +16,13 @@ import shutil
 import sys
 import time
 from pathlib import Path
+
+if "SSLKEYLOGFILE" in os.environ:
+    try:
+        with open(os.environ["SSLKEYLOGFILE"], "a"):
+            pass
+    except Exception:
+        os.environ.pop("SSLKEYLOGFILE", None)
 
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
@@ -203,7 +210,10 @@ def ingest_pdfs_to_chroma(clean_db: bool = False) -> None:
             summary[segment] = 0
 
     try:
-        from tools.retrieval_tools import reset_bm25_cache
+        try:
+            from src.tools.retrieval_tools import reset_bm25_cache
+        except ImportError:
+            from tools.retrieval_tools import reset_bm25_cache
         reset_bm25_cache()
     except Exception:
         pass

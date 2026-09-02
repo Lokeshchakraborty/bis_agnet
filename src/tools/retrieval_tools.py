@@ -153,7 +153,7 @@ def hybrid_retrieve(
     # 4. Rerank by cosine similarity
     try:
         query_emb = embeddings.embed_query(query)
-        doc_embs = [embeddings.embed_documents([doc.page_content])[0] for doc in merged]
+        doc_embs = embeddings.embed_documents([doc.page_content for doc in merged])
         top_docs = _cosine_rerank(merged, query_emb, doc_embs, top_n=rerank_top_n)
         logger.info("Reranked to top %d docs", len(top_docs))
     except Exception as exc:

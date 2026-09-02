@@ -1,37 +1,58 @@
-# --- Core Orchestration & Agent Framework ---
+# =============================================================================
+# Bureau of Indian Standards (BIS) Agentic RAG Assistant - Dependencies
+# =============================================================================
+
+# --- Core Agent Orchestration & Graph Workflow ---
 langchain>=0.2.0
 langchain-core>=0.2.0
 langchain-community>=0.2.0
+langchain-text-splitters>=0.2.0
 langgraph>=0.1.0
 
-# --- LLM Provider (Google Gemini) ---
+# --- LLM Providers ---
 langchain-google-genai>=1.0.6
 google-generativeai>=0.7.0
+langchain-mistralai>=0.1.0
 
-# --- Local Embeddings & Vector Database ---
-ollama>=0.2.1
+# --- Vector Database, Hybrid Retrieval & Embeddings ---
 chromadb>=0.5.0
+langchain-chroma>=0.1.0
+fastembed>=0.3.0
+onnxruntime>=1.18.0
+rank-bm25>=0.2.2
+ollama>=0.2.1
+langchain-ollama>=0.1.0
 
-# --- Local Speech-to-Text & Translation (Whisper) ---
+# --- Speech-to-Text & Text-to-Speech (Voice Loop) ---
 openai-whisper>=20231117
 sounddevice>=0.4.6
 soundfile>=0.12.1
+pyttsx3>=2.90
+pywin32>=306; sys_platform == 'win32'
+pypiwin32>=223; sys_platform == 'win32'
+torch>=2.0.0
 numpy>=1.24.0
 
-# --- Web Scraping & Dynamic Automation ---
+# --- Web Scraping & Dynamic Portal Automation ---
 playwright>=1.44.0
-nest_asyncio>=1.6.0
+nest-asyncio>=1.6.0
 beautifulsoup4>=4.12.3
 requests>=2.32.0
 
-# --- Data Handling & Parsing ---
+# --- Document Ingestion & Parsing ---
+pypdf>=4.0.0
 pandas>=2.2.0
 openpyxl>=3.1.2
 lxml>=5.2.0
 html5lib>=1.1
 
+# --- Token Counting & HuggingFace Utilities ---
+tokenizers>=0.19.0
+huggingface-hub>=0.23.0
+tiktoken>=0.7.0
+
 # --- Terminal UI, Validation & Environment ---
 pydantic>=2.7.0
+pydantic-settings>=2.2.0
 rich>=13.7.1
 python-dotenv>=1.0.1
-langchain_mistralai

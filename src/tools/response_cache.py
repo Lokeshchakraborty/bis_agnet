@@ -22,7 +22,7 @@ from typing import Optional
 
 logger = logging.getLogger("bis_cache")
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CACHE_FILE = PROJECT_ROOT / "data" / "cache.json"
 TTL_SECONDS = 24 * 60 * 60  # 24 hours
 
