@@ -57,6 +57,10 @@ class Config:
     retry_backoff_seconds: float = float(os.getenv("BIS_RETRY_BACKOFF", "1.5"))
     log_level: str = os.getenv("BIS_LOG_LEVEL", "INFO")
     cache_enabled: bool = os.getenv("BIS_CACHE_ENABLED", "true").lower() == "true"
+    database_url: str = os.getenv("DATABASE_URL", "")
+    supabase_url: str = os.getenv("SUPABASE_URL", "")
+    supabase_key: str = os.getenv("SUPABASE_KEY", os.getenv("SUPABASE_ANON_KEY", os.getenv("SUPABASE_SERVICE_KEY", "")))
+
 
 
 CONFIG = Config()

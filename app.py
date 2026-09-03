@@ -6,10 +6,12 @@ session management, and response cache control.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
 import tempfile
+
 import uuid
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
@@ -85,12 +87,44 @@ def get_audio_handler():
 from pydantic import BaseModel, Field, model_validator
 from typing import Any, Dict, List, Optional
 
+class UserSignupRequest(BaseModel):
+    email: str = Field(..., description="User email address")
+    password: str = Field(..., description="User password")
+    full_name: str = Field(..., description="User full name")
+
+
+class UserLoginRequest(BaseModel):
+    email: str = Field(..., description="User email address")
+    password: str = Field(..., description="User password")
+
+
+class ChangePasswordRequest(BaseModel):
+    user_id: str = Field(..., description="User ID")
+    old_password: str = Field(..., description="Current password")
+    new_password: str = Field(..., description="New password")
+
+
+class UserProfile(BaseModel):
+
+    user_id: str
+    email: str
+    full_name: str
+    created_at: Optional[str] = ""
+
+
+class AuthResponse(BaseModel):
+    success: bool
+    error: Optional[str] = None
+    user: Optional[UserProfile] = None
+
+
 class QueryRequest(BaseModel):
     query: Optional[str] = Field(default=None, description="User question or prompt for the BIS Agent.")
     prompt: Optional[str] = Field(default=None, description="Alternative key for user query.")
     text: Optional[str] = Field(default=None, description="Alternative key for user text.")
     question: Optional[str] = Field(default=None, description="Alternative key for question.")
     session_id: str = Field(default="default", description="Unique conversation session identifier.")
+    user_id: str = Field(default="default_user", description="Logged-in user identifier.")
 
     @model_validator(mode="before")
     @classmethod
@@ -106,10 +140,12 @@ class QueryRequest(BaseModel):
         "json_schema_extra": {
             "example": {
                 "query": "What is the procedure for getting a Gold Hallmarking license under BIS?",
-                "session_id": "user-123"
+                "session_id": "user-123",
+                "user_id": "usr_abc123"
             }
         }
     }
+
 
 
 class TokenUsageSummary(BaseModel):
@@ -162,6 +198,7 @@ class HealthResponse(BaseModel):
     cache_enabled: bool
     chroma_db_exists: bool
     active_sessions_count: int
+    supabase_connected: bool = False
 
 
 class SessionInfoResponse(BaseModel):
@@ -190,6 +227,14 @@ async def lifespan(app: FastAPI):
         validate_environment()
     except SystemExit:
         logger.warning("Environment validation warning during startup.")
+
+    # Initialize Supabase DB tables asynchronously if configured
+    try:
+        from backend.db.supabase_client import init_supabase_db
+        await init_supabase_db()
+    except Exception as exc:
+        logger.warning("Supabase DB initialization notice: %s", exc)
+
     yield
     logger.info("Shutting down BIS Agent REST API server...")
 
@@ -222,8 +267,9 @@ app.add_middleware(
 @app.get("/", response_model=HealthResponse, tags=["Diagnostics"])
 @app.get("/health", response_model=HealthResponse, tags=["Diagnostics"])
 async def health_check() -> HealthResponse:
-    """Check API health, active configuration, and vector DB status."""
+    """Check API health, active configuration, vector DB status, and Supabase connection."""
     chroma_exists = os.path.exists(CONFIG.db_path)
+    supabase_ok = bool(CONFIG.database_url or CONFIG.supabase_url)
     return HealthResponse(
         status="ok",
         service="BIS Agentic RAG Assistant REST API",
@@ -232,7 +278,113 @@ async def health_check() -> HealthResponse:
         cache_enabled=CONFIG.cache_enabled,
         chroma_db_exists=chroma_exists,
         active_sessions_count=len(session_manager._sessions),
+        supabase_connected=supabase_ok,
     )
+
+
+
+# --------------------------------------------------------------------------- #
+# User Authentication Endpoints
+# --------------------------------------------------------------------------- #
+@app.post(
+    "/api/v1/auth/signup",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["User Authentication"],
+    summary="Register a new user",
+)
+async def user_signup(payload: UserSignupRequest) -> AuthResponse:
+    """Create a new user account in Supabase PostgreSQL."""
+    from backend.db.supabase_client import create_user_in_supabase
+    res = await create_user_in_supabase(
+        email=payload.email,
+        password=payload.password,
+        full_name=payload.full_name,
+    )
+    if not res.get("success"):
+        return AuthResponse(success=False, error=res.get("error", "Signup failed."))
+    return AuthResponse(success=True, user=UserProfile(**res["user"]))
+
+
+@app.post(
+    "/api/v1/auth/login",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["User Authentication"],
+    summary="Authenticate user login",
+)
+async def user_login(payload: UserLoginRequest) -> AuthResponse:
+    """Authenticate email & password against Supabase PostgreSQL."""
+    from backend.db.supabase_client import authenticate_user_in_supabase
+    res = await authenticate_user_in_supabase(
+        email=payload.email,
+        password=payload.password,
+    )
+    if not res.get("success"):
+        return AuthResponse(success=False, error=res.get("error", "Invalid credentials."))
+    return AuthResponse(success=True, user=UserProfile(**res["user"]))
+
+
+@app.post(
+    "/api/v1/auth/change-password",
+    response_model=SimpleStatusResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["User Authentication"],
+    summary="Change user password",
+)
+async def change_password(payload: ChangePasswordRequest) -> SimpleStatusResponse:
+    """Verify old password and update user password in Supabase PostgreSQL."""
+    from backend.db.supabase_client import change_user_password_in_supabase
+    res = await change_user_password_in_supabase(
+        user_id=payload.user_id,
+        old_password=payload.old_password,
+        new_password=payload.new_password,
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=res.get("error", "Password change failed."))
+    return SimpleStatusResponse(status="success", message=res.get("message", "Password updated successfully."))
+
+
+@app.get(
+    "/api/v1/auth/user-usage/{user_id}",
+
+    tags=["User Authentication"],
+    summary="Get cumulative lifetime account token usage for a user",
+)
+async def get_user_account_usage(user_id: str = APIPath(..., description="Target user ID")):
+    """Calculate cumulative lifetime account-wide token usage for a user from Supabase PostgreSQL."""
+    from backend.db.supabase_client import get_user_account_usage_from_supabase
+    return await get_user_account_usage_from_supabase(user_id)
+
+
+from fastapi.responses import StreamingResponse
+
+
+
+@app.post(
+    "/api/v1/query/stream",
+    tags=["Conversational Agent"],
+    summary="Process query with real-time SSE state streaming",
+)
+async def process_query_stream(payload: QueryRequest):
+    """
+    Stream real-time model thinking, retrieval, and synthesis states as SSE events.
+    """
+    session = session_manager.get_session(payload.session_id)
+
+    async def event_generator():
+        try:
+            async for chunk in session.run_turn_stream(
+                user_query=payload.query,
+                session_id=payload.session_id,
+                user_id=payload.user_id,
+            ):
+                yield f"data: {json.dumps(chunk)}\n\n"
+        except Exception as exc:
+            logger.exception("Error in query stream: %s", exc)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.post(
@@ -243,6 +395,7 @@ async def health_check() -> HealthResponse:
     summary="Process a user text query",
 )
 async def process_query(payload: QueryRequest) -> QueryResponse:
+
     """
     Execute a turn of conversation with the BIS Agent.
     - Uses session history for context-aware multi-turn dialogs.
@@ -251,8 +404,10 @@ async def process_query(payload: QueryRequest) -> QueryResponse:
     """
     try:
         session = session_manager.get_session(payload.session_id)
-        state = session.run_turn(payload.query)
+        state = session.run_turn(payload.query, session_id=payload.session_id, user_id=payload.user_id)
         payload_dict = session.to_json(state)
+
+
 
         return QueryResponse(
             session_id=payload.session_id,
@@ -336,8 +491,9 @@ async def process_voice_query(
 
         # Run transcribed text through RAG turn
         session = session_manager.get_session(session_id)
-        state = session.run_turn(transcription)
+        state = session.run_turn(transcription, session_id=session_id)
         payload_dict = session.to_json(state)
+
 
         result = QueryResponse(
             session_id=session_id,
@@ -385,12 +541,46 @@ async def process_voice_query(
     "/api/v1/sessions",
     response_model=SessionInfoResponse,
     tags=["Session Management"],
-    summary="List active conversation sessions",
+    summary="List active conversation sessions for a user",
 )
-async def list_active_sessions() -> SessionInfoResponse:
-    """Retrieve metadata for all in-memory conversation sessions."""
-    sessions = session_manager.list_sessions()
-    return SessionInfoResponse(sessions=sessions, total_active=len(sessions))
+async def list_active_sessions(user_id: str = "default_user") -> SessionInfoResponse:
+    """Retrieve metadata for conversation sessions from Supabase PostgreSQL for a specific user_id."""
+    try:
+        from backend.db.supabase_client import list_user_sessions_from_supabase
+        db_sessions = await list_user_sessions_from_supabase(user_id)
+        if db_sessions:
+            return SessionInfoResponse(sessions=db_sessions, total_active=len(db_sessions))
+    except Exception as exc:
+        logger.warning("Error fetching sessions from Supabase: %s", exc)
+
+    mem_sessions = session_manager.list_sessions()
+    return SessionInfoResponse(sessions=mem_sessions, total_active=len(mem_sessions))
+
+
+@app.get(
+    "/api/v1/sessions/{session_id}",
+    tags=["Session Management"],
+    summary="Get conversation history for a session",
+)
+async def get_session_history(session_id: str = APIPath(..., description="Target session ID")):
+    """Retrieve full conversation turn history for a session from Supabase or in-memory cache."""
+    try:
+        from backend.db.supabase_client import get_session_from_supabase
+        db_sess = await get_session_from_supabase(session_id)
+        if db_sess and "history" in db_sess:
+            history = db_sess["history"]
+            if isinstance(history, str):
+                history = json.loads(history)
+            return {"session_id": session_id, "history": history}
+    except Exception as exc:
+        logger.warning("Error fetching session '%s' from Supabase: %s", session_id, exc)
+
+    mem_sess = session_manager.get_session(session_id)
+    raw_history = list(mem_sess.history)
+    history_json = [{"user": u, "assistant": a} for u, a in raw_history]
+    return {"session_id": session_id, "history": history_json}
+
+
 
 
 @app.delete(
@@ -400,17 +590,19 @@ async def list_active_sessions() -> SessionInfoResponse:
     summary="Reset or delete a session",
 )
 async def delete_session(session_id: str = APIPath(..., description="Target session ID")) -> SimpleStatusResponse:
-    """Clear conversation history and session memory for a given session_id."""
-    deleted = session_manager.delete_session(session_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Session '{session_id}' not found.",
-        )
+    """Clear conversation history and session memory for a given session_id from memory and Supabase."""
+    session_manager.delete_session(session_id)
+    try:
+        from backend.db.supabase_client import delete_session_from_supabase
+        await delete_session_from_supabase(session_id)
+    except Exception as exc:
+        logger.warning("Error deleting session '%s' from Supabase: %s", session_id, exc)
+
     return SimpleStatusResponse(
         status="success",
         message=f"Session '{session_id}' successfully deleted.",
     )
+
 
 
 @app.post(
@@ -433,3 +625,27 @@ async def clear_cache() -> CacheClearResponse:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to clear cache: {str(exc)}",
         )
+
+
+@app.get(
+    "/api/v1/audit-logs",
+    response_model=List[Dict],
+    tags=["Compliance & Audit"],
+    summary="Retrieve audit ledger records from Supabase",
+)
+async def get_audit_logs(
+    session_id: Optional[str] = None,
+    limit: int = 50,
+) -> List[Dict]:
+    """Fetch structured legal & compliance audit trail records from Supabase PostgreSQL."""
+    try:
+        from backend.db.supabase_client import fetch_audit_logs_from_supabase
+        logs = await fetch_audit_logs_from_supabase(session_id=session_id, limit=limit)
+        return logs
+    except Exception as exc:
+        logger.exception("Failed to fetch audit logs: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve audit logs: {str(exc)}",
+        )
+

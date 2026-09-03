@@ -98,6 +98,25 @@ class TestBISAgentAPI(unittest.TestCase):
         self.assertIn("suggested_action", data)
         self.assertEqual(data["session_id"], "limited-sess")
 
+    def test_07_quantitative_parameter_extraction(self):
+        # Verify quantitative parameters (capacities, limits) are extracted directly into core_response
+        payload = {
+            "query": "What is the maximum capacity limit and overall chemical migration limit for IS 12701 polyethylene water storage tanks?",
+            "session_id": "quant-sess-1"
+        }
+        response = self.client.post("/api/v1/query", json=payload)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        core_resp = data.get("core_response", "").lower()
+        self.assertTrue(
+            "10,000" in core_resp or "10000" in core_resp or "10 000" in core_resp or "litre" in core_resp,
+            f"Expected capacity limit (10,000 Litres) in core_response, got: {core_resp}"
+        )
+        self.assertTrue(
+            "60" in core_resp or "mg/l" in core_resp,
+            f"Expected chemical migration limit (60 mg/l) in core_response, got: {core_resp}"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -367,8 +367,40 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
                 "     * Technical abbreviations (e.g. 'HUID', 'AHC', 'CRS', 'FMCS', 'CML', 'QCO', 'AIR')\n"
                 "   - applicable_standards: List every relevant IS standard code formatted as 'IS XXXX - Description'.\n"
                 "   - source_citation: If context has '[Source N: filename]', cite the exact file name(s).\n\n"
-                "4. INDIAN STANDARDS (IS CODE) IDENTIFICATION:\n"
-                "   - When queried about a specific IS code (e.g. 'IS 567', 'IS 12269', 'IS 4984'), use your authoritative BIS knowledge to identify the official standard title, product subject, and scope if scrape results are partial. Clearly guide the user on how to access the official standard on Manakonline.\n\n"
+                "4. STANDARDIZED COMPLIANCE RESPONSE FORMATTING (WITH NUMBERED SUB-ITEMS):\n"
+                "   - DO NOT include the heading or text 'Compliance Overview' at the top of core_response.\n"
+                "   - ALWAYS start directly with a clear, informative 2-3 sentence explanation response answering the user's question.\n"
+                "   - AFTER the explanation paragraph, present the compliance breakdown using MAIN BULLET POINTS ('• ') for each category, and ALWAYS INCLUDE INDENTED NUMBERED SUB-ITEMS ('  1. ', '  2. ') under each main category to provide detailed technical points and specifics.\n"
+                "   - Required Main Categories & Numbered Sub-Items Structure:\n"
+                "     • **Applicable Indian Standards for products**:\n"
+                "       1. **Primary Standard**: Exact IS code and title (e.g. **IS 1417:2019**)\n"
+                "       2. **Scope & Purity**: Specific grades, classes, or product scope\n"
+                "     • **Certification requirements**:\n"
+                "       1. **Marking Requirements**: Mandatory ISI Mark / CRS Mark / HUID 6-digit alphanumeric code\n"
+                "       2. **AIR Obligation**: Authorized Indian Representative rules for foreign manufacturers\n"
+                "     • **Relevant BIS schemes**:\n"
+                "       1. **Scheme Name**: Scheme-I (Product Certification), Scheme-IV, CRS, FMCS, Hallmarking Scheme, LRS\n"
+                "     • **Licensing procedures**:\n"
+                "       1. **Portal Application**: Manakonline portal filing (Form H-1 / Form CML)\n"
+                "       2. **Inspection & Audit**: Factory audit and preliminary sample testing rules\n"
+                "     • **Testing requirements**:\n"
+                "       1. **Accredited Testing**: Mandatory NABL/BIS-accredited lab test reports\n"
+                "       2. **Test Parameters**: Specific physical, chemical, mechanical, or safety test parameters\n"
+                "     • **Related standards & Dedicated Amendments**:\n"
+                "       1. **Related IS Codes**: Complementary standards\n"
+                "       2. **Dedicated Amendment Status**: Explicitly state 'Dedicated Amendment Available: Amendment No. X' OR 'No Dedicated Amendment Released'\n"
+                "     • **Answers to technical queries**:\n"
+                "       1. **Quantitative Limits**: State exact numeric thresholds, capacities, tolerances, and test limits\n\n"
+
+
+
+
+                "5. INDIAN STANDARDS (IS CODE) IDENTIFICATION:\n"
+
+                "   - When queried about a specific IS code (e.g. 'IS 567', 'IS 12269', 'IS 4984', 'IS 12701'), use your authoritative BIS knowledge to identify the official standard title, product subject, and scope if scrape results are partial. Clearly guide the user on how to access the official standard on Manakonline.\n\n"
+                "5. MANDATORY QUANTITATIVE & PARAMETER EXTRACTION (CRITICAL):\n"
+                "   - If the user asks for specific technical parameters, maximum/minimum limits, capacities, dimensions, tolerances, or chemical/physical test thresholds (e.g., maximum capacity limit of 10,000 Litres and overall chemical migration limit of 60 mg/l max for IS 12701 polyethylene water storage tanks), YOU MUST EXTRACT AND STATE THE EXACT NUMBERS, VALUES, AND UNITS IN YOUR core_response.\n"
+                "   - DO NOT play it too safe or dodge by telling the user to 'refer to the portal' or stating that 'tests exist' without giving the numbers. Always state the exact quantitative numbers, limits, and technical values first in core_response, and provide the portal URL in next_step as an actionable follow-up.\n\n"
                 "Chat history:\n{chat_history}\n\nContext:\n{context}"
             )
 

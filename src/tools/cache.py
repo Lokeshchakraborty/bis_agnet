@@ -53,10 +53,11 @@ class ResponseCache:
         except Exception as exc:
             logger.warning("Failed to save cache file: %s", exc)
 
-    def make_key(self, intent: str, query: str) -> str:
-        """Create a short, deterministic SHA-256 hash key."""
-        normalized = f"{intent}::{_normalize(query)}"
+    def make_key(self, intent: str, query: str, user_id: str = "default_user") -> str:
+        """Create a short, deterministic SHA-256 hash key isolated per user_id."""
+        normalized = f"{user_id or 'default_user'}::{intent}::{_normalize(query)}"
         return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+
 
     def get(self, key: str) -> Optional[Dict[str, Any]]:
         """Return cached payload if valid and not expired, else None."""

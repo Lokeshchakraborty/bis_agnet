@@ -37,6 +37,7 @@ class AuditLogger:
         payload_dict: Dict[str, Any],
         token_usage: Optional[Dict[str, Any]] = None,
         response_time_ms: float = 0.0,
+        user_id: Optional[str] = "default_user",
     ) -> Dict[str, Any]:
         """Record an interaction turn to the audit log with SHA-256 digest."""
         now_utc = datetime.now(timezone.utc).isoformat()
@@ -48,6 +49,7 @@ class AuditLogger:
 
         audit_record = {
             "interaction_id": payload_dict.get("audit_metadata", {}).get("interaction_id") or str(hashlib.md5(f"{now_utc}-{user_query}".encode()).hexdigest()),
+            "user_id": user_id or "default_user",
             "timestamp_utc": now_utc,
             "session_id": session_id,
             "user_query": user_query,
@@ -65,6 +67,7 @@ class AuditLogger:
             "payload_sha256": payload_hash,
         }
 
+
         try:
             with open(self.log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(audit_record, ensure_ascii=False) + "\n")
@@ -72,7 +75,20 @@ class AuditLogger:
         except Exception as exc:
             logger.error("Failed to write audit ledger record: %s", exc)
 
+        # Asynchronously schedule Supabase audit log insert if event loop is active
+        try:
+            import asyncio
+            from backend.db.supabase_client import log_audit_to_supabase
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(log_audit_to_supabase(audit_record))
+            except RuntimeError:
+                pass
+        except Exception as exc:
+            logger.debug("Could not schedule async Supabase audit log: %s", exc)
+
         return audit_record
+
 
 
 _audit_logger_instance = None

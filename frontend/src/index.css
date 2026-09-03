@@ -1,0 +1,173 @@
+:root {
+  --gemini-bg-main: #131314;
+  --gemini-bg-sidebar: #1E1F20;
+  --gemini-bg-card: #1E1F20;
+  --gemini-bg-card-hover: #282A2C;
+  --gemini-bg-input: #1E1F20;
+  
+  --text-main: #E3E3E3;
+  --text-subtle: #C4C7C5;
+  --text-muted: #8E918F;
+  
+  --gemini-blue: #4285F4;
+  --gemini-purple: #9B51E0;
+  --gemini-pink: #EC4899;
+  --gemini-cyan: #06B6D4;
+  --gemini-gold: #F59E0B;
+  --gemini-green: #10B981;
+  
+  --gemini-sparkle-gradient: linear-gradient(135deg, #4285F4 0%, #9B51E0 50%, #EC4899 100%);
+  --gemini-text-gradient: linear-gradient(90deg, #4285F4 0%, #A855F7 50%, #EC4899 100%);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  --font-body: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--gemini-bg-main);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Custom Gemini Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Google Gemini Sparkle Star Icon Component */
+.gemini-sparkle-icon {
+  background: var(--gemini-sparkle-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+}
+
+.gemini-gradient-text {
+  background: var(--gemini-text-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Gemini Glass Panel & Cards */
+.gemini-card {
+  background: var(--gemini-bg-card);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  transition: all 0.2s ease;
+}
+
+.gemini-card:hover {
+  background: var(--gemini-bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Typography & Markdown Formatting */
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+  color: #FFFFFF;
+  font-weight: 600;
+  margin-top: 1.2em;
+  margin-bottom: 0.6em;
+}
+
+.markdown-body h3 {
+  font-size: 1.1rem;
+}
+
+.markdown-body p {
+  margin-bottom: 0.8em;
+  line-height: 1.65;
+}
+
+.markdown-body strong {
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+.markdown-body code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  color: #38BDF8;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes pulse-gemini {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+.gemini-pulse {
+  animation: pulse-gemini 1.8s infinite ease-in-out;
+}
+
+@keyframes wave-text {
+  0%, 100% {
+    opacity: 0.5;
+    transform: translateY(0px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.gemini-wave-text {
+  animation: wave-text 1.6s infinite ease-in-out;
+}
+
