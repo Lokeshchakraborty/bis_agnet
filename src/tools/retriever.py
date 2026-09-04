@@ -15,6 +15,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
 from src.config import CONFIG
+from src.tools.vector_store import get_all_documents_for_domain
 
 logger = logging.getLogger("bis_retrieval")
 
@@ -44,18 +45,11 @@ _bm25_cache: Dict[str, _BM25Index] = {}
 _doc_embedding_cache: Dict[str, List[float]] = {}
 
 
-def _get_bm25_index(domain: str, chroma_db: Chroma) -> Optional[_BM25Index]:
+def _get_bm25_index(domain: str, vector_store: any) -> Optional[_BM25Index]:
     """Retrieve or lazily construct a cached BM25 index for a specific domain collection."""
     if domain not in _bm25_cache:
         try:
-            all_results = chroma_db._collection.get(include=["documents", "metadatas"])
-            docs = [
-                Document(page_content=text, metadata=meta or {})
-                for text, meta in zip(
-                    all_results.get("documents", []),
-                    all_results.get("metadatas", []),
-                )
-            ]
+            docs = get_all_documents_for_domain(domain, vector_store)
             if docs:
                 _bm25_cache[domain] = _BM25Index(docs)
                 logger.info("Built BM25 index for '%s' with %d docs", domain, len(docs))
@@ -125,7 +119,7 @@ def _cosine_rerank(
 
 def hybrid_retrieve(
     query: str,
-    chroma_db: Chroma,
+    vector_store: any,
     embeddings: Embeddings,
     domain: str,
     dense_k: int = CONFIG.retriever_k,
@@ -139,19 +133,31 @@ def hybrid_retrieve(
     Returns:
         (top_documents, formatted_context_string)
     """
-    # 1. Dense retrieval
-    dense_docs: List[Document] = []
-    try:
-        retriever = chroma_db.as_retriever(search_kwargs={"k": dense_k})
-        dense_docs = retriever.invoke(query)
-    except Exception as exc:
-        logger.warning("Dense retrieval error for domain '%s': %s", domain, exc)
+    # 1. Parallel Dense & Sparse BM25 Retrieval
+    import concurrent.futures
 
-    # 2. Sparse BM25 retrieval
-    bm25_docs: List[Document] = []
-    bm25_index = _get_bm25_index(domain, chroma_db)
-    if bm25_index:
-        bm25_docs = bm25_index.get_top_k(query, k=bm25_k)
+    def _run_dense() -> List[Document]:
+        try:
+            retriever = vector_store.as_retriever(search_kwargs={"k": dense_k})
+            return retriever.invoke(query)
+        except Exception as exc:
+            logger.warning("Dense retrieval error for domain '%s': %s", domain, exc)
+            return []
+
+    def _run_bm25() -> List[Document]:
+        try:
+            bm25_index = _get_bm25_index(domain, vector_store)
+            if bm25_index:
+                return bm25_index.get_top_k(query, k=bm25_k)
+        except Exception as exc:
+            logger.warning("BM25 retrieval error for domain '%s': %s", domain, exc)
+        return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        f_dense = executor.submit(_run_dense)
+        f_bm25 = executor.submit(_run_bm25)
+        dense_docs = f_dense.result()
+        bm25_docs = f_bm25.result()
 
     # 3. Deduplicate
     seen: set[str] = set()

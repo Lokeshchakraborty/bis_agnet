@@ -3,6 +3,12 @@ export interface UserProfile {
   email: string;
   full_name: string;
   created_at?: string;
+  role?: string;
+  is_admin?: boolean;
+  llm_provider?: string;
+  llm_model?: string;
+  llm_api_key?: string;
+  llm_base_url?: string;
 }
 
 export interface AuthResponse {
@@ -41,9 +47,13 @@ export interface TokenUsageSummary {
   turn_llm_tokens: number;
   turn_prompt_tokens: number;
   turn_completion_tokens: number;
+  total_tokens?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
   turn_embedding_tokens: number;
   session_total_llm_tokens: number;
   session_total_saved_tokens: number;
+  estimated_saved_tokens?: number;
   embedding_provider: string;
 }
 
@@ -109,6 +119,7 @@ export interface ChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
+  query?: string;
   response?: QueryResponse;
   timestamp: string;
 }

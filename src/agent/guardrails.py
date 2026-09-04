@@ -47,25 +47,60 @@ def validate_and_sanitize_response(
     # 2. Trigger Proactive Disambiguation Workflow if confidence is low
     if requires_clarification:
         logger.warning("Low confidence (%.2f) detected for query: %r", intent_confidence, query)
-        clarification_msg = (
-            "\n\n[System Clarification Note]: Your query appears broad or ambiguous. "
-            "To get the most accurate BIS regulatory requirements, please specify the exact product type "
-            "(e.g., gold jewellery, mobile phone, PVC pipe, cement) or the specific IS standard code."
-        )
+        q_lower = query.strip().lower()
+
+        # Tailored disambiguation for common broad queries
+        product_options = {
+            "pipe": "Which type of pipe: 1) HDPE Water Supply (IS 4984), 2) UPVC Pipes (IS 4985), or 3) Steel Tubes (IS 1239)?",
+            "pipes": "Which type of pipe: 1) HDPE Water Supply (IS 4984), 2) UPVC Pipes (IS 4985), or 3) Steel Tubes (IS 1239)?",
+            "cement": "Which grade of cement: 1) 43 Grade OPC (IS 8112), 2) 53 Grade OPC (IS 12269), or 3) PPC (IS 1489)?",
+            "steel": "Which steel product: 1) TMT Rebars (IS 1786), 2) Structural Steel (IS 2062), or 3) Stainless Steel (IS 6911)?",
+            "cable": "Which cable standard: 1) PVC Insulated Cables (IS 694) or 2) XLPE Power Cables (IS 7098)?",
+            "wire": "Which wire standard: 1) Domestic PVC Wires (IS 694) or 2) Steel Binding Wire (IS 280)?",
+            "helmet": "Which helmet type: 1) Two-Wheeler Riders (IS 4151) or 2) Industrial Safety Helmets (IS 2925)?",
+            "tank": "Which water tank type: 1) Polyethylene Rotomoulded (IS 12701) or 2) GRP Water Tanks (IS 14399)?",
+            "tanks": "Which water tank type: 1) Polyethylene Rotomoulded (IS 12701) or 2) GRP Water Tanks (IS 14399)?",
+        }
+
+        matched_clarif = None
+        for k, prompt in product_options.items():
+            if k in q_lower.split():
+                matched_clarif = prompt
+                break
+
+        if matched_clarif:
+            response.follow_up_prompt = matched_clarif
+            clarification_msg = (
+                f"\n\n💡 **Quick Standards Disambiguation**: To view exact regulatory specs, select:\n"
+                f"• {matched_clarif}"
+            )
+        else:
+            clarification_msg = (
+                "\n\n[System Clarification Note]: Your query appears broad or ambiguous. "
+                "To get the most accurate BIS regulatory requirements, please specify the exact product type "
+                "(e.g., gold jewellery, mobile phone, PVC pipe, cement) or the specific IS standard code."
+            )
+            response.follow_up_prompt = (
+                "Could you please specify which exact product or IS standard code you are asking about?"
+            )
+
         if clarification_msg not in response.core_response:
             response.core_response += clarification_msg
-        response.follow_up_prompt = (
-            "Could you please specify which exact product or IS standard code you are asking about?"
-        )
 
     # 3. Enforce Official Portal URL Integrity
-    urls = re.findall(r"https?://[^\s<'\"]+", response.next_step + " " + response.core_response)
+    combined_text = response.next_step + " " + response.core_response
+    urls = re.findall(r"https?://[^\s<'\"]+", combined_text)
     for url in urls:
         if not any(domain in url.lower() for domain in OFFICIAL_DOMAINS):
             logger.warning("Potentially unauthorized domain link detected in response: %s", url)
             # Replace unauthorized URL with official Manakonline portal
             response.next_step = response.next_step.replace(url, "https://manakonline.in")
             response.core_response = response.core_response.replace(url, "https://manakonline.in")
+
+    # Guarantee actionable official portal URL in next_step if not already present
+    if response.next_step and not any(domain in response.next_step.lower() for domain in OFFICIAL_DOMAINS):
+        portal = "https://crsbis.in" if "crs" in (response.core_response + " " + query).lower() else "https://manakonline.in"
+        response.next_step = f"{response.next_step.rstrip('.')} ({portal})."
 
     # 4. Enforce Legal Act Accuracy
     # Ensure penalties cite the BIS Act, 2016 rather than misattributing to Consumer Protection Act

@@ -226,11 +226,15 @@ class TokenTracker:
             "llm_provider": llm_prov,
             "llm_model": CONFIG.llm_model,
             "turn_llm_tokens": t_tok,
+            "total_tokens": t_tok,
             "turn_prompt_tokens": p_tok,
+            "prompt_tokens": p_tok,
             "turn_completion_tokens": c_tok,
+            "completion_tokens": c_tok,
             "turn_embedding_tokens": self.turn_embedding_tokens,
             "session_total_llm_tokens": self.session_prompt_tokens + self.session_completion_tokens,
             "session_total_saved_tokens": self.session_saved_tokens,
+            "estimated_saved_tokens": self.session_saved_tokens,
             "session_embedding_tokens": self.session_embedding_tokens,
             "embedding_provider": (
                 f"{CONFIG.embedding_provider.upper()} (Local ONNX - $0.00 API cost)"

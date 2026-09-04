@@ -125,6 +125,59 @@ body {
   color: #38BDF8;
 }
 
+/* Compliance Tables Styling */
+.markdown-body table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 16px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  background: rgba(30, 31, 32, 0.6);
+  font-size: 0.88rem;
+}
+
+.markdown-body thead {
+  background: rgba(66, 133, 244, 0.12);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.markdown-body th {
+  color: #FFFFFF;
+  font-weight: 600;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.84rem;
+  letter-spacing: 0.02em;
+}
+
+.markdown-body td {
+  padding: 10px 14px;
+  color: var(--text-main);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  line-height: 1.5;
+}
+
+.markdown-body tr:last-child td {
+  border-bottom: none;
+}
+
+.markdown-body tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.markdown-body ul, .markdown-body ol {
+  padding-left: 20px;
+  margin-bottom: 12px;
+  line-height: 1.65;
+}
+
+.markdown-body li {
+  margin-bottom: 4px;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from {
@@ -169,5 +222,21 @@ body {
 
 .gemini-wave-text {
   animation: wave-text 1.6s infinite ease-in-out;
+}
+
+@keyframes bis-logo-pulse {
+  0%, 100% {
+    transform: scale(0.96);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+    filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6));
+  }
+}
+
+.bis-logo-pulse {
+  animation: bis-logo-pulse 1.5s infinite ease-in-out;
 }
 

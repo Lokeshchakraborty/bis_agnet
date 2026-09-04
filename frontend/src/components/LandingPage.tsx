@@ -1,5 +1,6 @@
 import React from 'react';
-import { Sparkles, Shield, CheckCircle, ArrowRight, Database, Lock, LogIn, UserPlus } from 'lucide-react';
+import { Shield, CheckCircle, ArrowRight, Database, Lock, LogIn, UserPlus } from 'lucide-react';
+import { BisLogo } from './BisLogo';
 
 interface LandingPageProps {
   onOpenLogin: () => void;
@@ -8,37 +9,37 @@ interface LandingPageProps {
 
 const FEATURE_CARDS = [
   {
-    icon: '✨',
     title: 'Gold Hallmarking & HUID',
     description: 'Instant compliance guidance for IS 1417 gold purity, 6-digit HUID marking, and AHC center registration.',
+    icon: <BisLogo size={32} />,
   },
   {
-    icon: '📱',
     title: 'Electronics CRS Registration',
     description: 'Mandatory documentation checklists and portal filing rules for MeitY electronic & IT equipment.',
+    icon: <BisLogo size={32} />,
   },
   {
-    icon: '🌏',
     title: 'FMCS Overseas Certification',
     description: 'Foreign Manufacturers Certification Scheme procedures and Authorized Indian Representative (AIR) rules.',
+    icon: <BisLogo size={32} />,
   },
   {
-    icon: '🔬',
     title: 'BIS Testing Lab Networks',
     description: 'Locate NABL and BIS-accredited testing laboratories for chemical, physical, and safety parameters.',
+    icon: <BisLogo size={32} />,
   },
   {
-    icon: '📊',
     title: 'Real-Time User Usage Analytics',
     description: 'Track cumulative LLM token burn, query execution counts, and cache savings per user account in real time.',
+    icon: <BisLogo size={32} />,
   },
-
   {
-    icon: '⚡',
     title: '0-Token Instant Cache',
     description: 'Front-loaded caching for frequent compliance queries bypassing LLM execution for 0-latency results.',
+    icon: <BisLogo size={32} />,
   },
 ];
+
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin, onOpenSignup }) => {
   return (
@@ -55,17 +56,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin, onOpenSig
           background: 'var(--gemini-bg-main)',
           position: 'sticky',
           top: 0,
-          paddingBlock:"30px",
           zIndex: 50,
         }}
       >
-
-
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--gemini-sparkle-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 16px rgba(155, 81, 224, 0.4)' }}>
-            <Sparkles size={20} color="#FFFFFF" />
-          </div>
-          <span style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em', color: '#FFFFFF' }}>
+          <BisLogo size={32} />
+          <span style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#FFFFFF' }}>
             BIS SATHI
           </span>
         </div>

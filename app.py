@@ -20,7 +20,7 @@ from fastapi import FastAPI, File, HTTPException, Path as APIPath, UploadFile, F
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from src.agent.session import Session, SessionRateLimitException
 from src.config import CONFIG, validate_environment
 from src.schemas import BISResponse, ComplianceMetadata, ConfidenceMetrics, AuditMetadata, APIErrorPayload
@@ -105,11 +105,12 @@ class ChangePasswordRequest(BaseModel):
 
 
 class UserProfile(BaseModel):
-
     user_id: str
     email: str
     full_name: str
     created_at: Optional[str] = ""
+    role: str = "user"
+    is_admin: bool = False
 
 
 class AuthResponse(BaseModel):
@@ -237,6 +238,11 @@ async def lifespan(app: FastAPI):
 
     yield
     logger.info("Shutting down BIS Agent REST API server...")
+    try:
+        from backend.db.supabase_client import close_async_db_engine
+        await close_async_db_engine()
+    except Exception as exc:
+        logger.warning("Supabase DB cleanup notice: %s", exc)
 
 
 app = FastAPI(
@@ -591,12 +597,19 @@ async def get_session_history(session_id: str = APIPath(..., description="Target
 )
 async def delete_session(session_id: str = APIPath(..., description="Target session ID")) -> SimpleStatusResponse:
     """Clear conversation history and session memory for a given session_id from memory and Supabase."""
-    session_manager.delete_session(session_id)
+    deleted_mem = session_manager.delete_session(session_id)
+    deleted_db = False
     try:
         from backend.db.supabase_client import delete_session_from_supabase
-        await delete_session_from_supabase(session_id)
+        deleted_db = await delete_session_from_supabase(session_id)
     except Exception as exc:
         logger.warning("Error deleting session '%s' from Supabase: %s", session_id, exc)
+
+    if not deleted_mem and not deleted_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found.",
+        )
 
     return SimpleStatusResponse(
         status="success",
@@ -649,3 +662,60 @@ async def get_audit_logs(
             detail=f"Failed to retrieve audit logs: {str(exc)}",
         )
 
+
+class PDFExportRequest(BaseModel):
+    query: str
+    core_response: str
+    applicable_standards: List[str] = Field(default_factory=list)
+    next_step: Optional[str] = None
+    intent: Optional[str] = "compliance"
+    user_name: Optional[str] = "Compliance Officer / Applicant"
+    session_id: Optional[str] = "default"
+
+
+@app.post(
+    "/api/v1/export/pdf",
+    tags=["Compliance & Audit"],
+    summary="Generate and download official BIS compliance research dossier PDF",
+)
+async def export_compliance_pdf(payload: PDFExportRequest) -> StreamingResponse:
+    """Generate and stream a full-fledged official Bureau of Indian Standards (BIS) compliance dossier PDF."""
+    import re
+    try:
+        from src.tools.pdf_generator import generate_compliance_pdf
+        pdf_buffer = generate_compliance_pdf(
+            query=payload.query,
+            core_response=payload.core_response,
+            applicable_standards=payload.applicable_standards,
+            next_step=payload.next_step,
+            intent=payload.intent,
+            user_name=payload.user_name,
+            session_id=payload.session_id,
+        )
+        safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", payload.query[:30]).strip("_") or "Dossier"
+        filename = f"BIS_Compliance_Research_{safe_name}.pdf"
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+            },
+        )
+    except Exception as exc:
+        logger.exception("Failed to export compliance PDF: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate compliance PDF: {str(exc)}",
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Static File Serving (Optional: Single-Service Production Deployment)
+# --------------------------------------------------------------------------- #
+from fastapi.staticfiles import StaticFiles
+
+frontend_dist_path = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+if os.path.exists(frontend_dist_path):
+    logger.info("Mounting production frontend build from: %s", frontend_dist_path)
+    app.mount("/", StaticFiles(directory=frontend_dist_path, html=True), name="static_frontend")

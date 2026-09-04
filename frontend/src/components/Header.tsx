@@ -1,14 +1,15 @@
 import React from 'react';
-import { Menu, Database, BarChart3, Sparkles, User, LogOut } from 'lucide-react';
+import { Menu, Database, BarChart3, User, LogOut, ShieldCheck, Cpu } from 'lucide-react';
 import type { HealthResponse, UserProfile } from '../types';
-
+import { BisLogo } from './BisLogo';
 
 interface HeaderProps {
   health: HealthResponse | null;
   currentUser: UserProfile | null;
   onToggleTelemetry: () => void;
+  onOpenAuditLedger?: () => void;
   onOpenAuthModal: () => void;
-  onOpenProfileModal: () => void;
+  onOpenProfileModal: (tab?: 'details' | 'model' | 'usage') => void;
   onLogout: () => void;
   onToggleSidebar?: () => void;
 }
@@ -17,6 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
   health,
   currentUser,
   onToggleTelemetry,
+  onOpenAuditLedger,
   onOpenAuthModal,
   onOpenProfileModal,
   onLogout,
@@ -64,12 +66,12 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Gemini Brand Logo */}
+        {/* Official BIS Brand Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Sparkles size={22} className="gemini-sparkle-icon" color="#9B51E0" />
+            <BisLogo size={28} />
           </div>
-          <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
+          <span style={{ fontSize: '1.08rem', fontWeight: 800, color: '#FFFFFF', letterSpacing: '-0.01em' }}>
             BIS SATHI
           </span>
         </div>
@@ -97,9 +99,35 @@ export const Header: React.FC<HeaderProps> = ({
           <span>{health?.supabase_connected ? 'Supabase Active' : 'Offline'}</span>
         </div>
 
+        {/* Audit Ledger Button (Restricted to Admin Accounts Only) */}
+        {(currentUser?.is_admin || currentUser?.email?.toLowerCase().includes('admin') || currentUser?.email?.toLowerCase().endsWith('@bis.gov.in')) && onOpenAuditLedger && (
+          <button
+            onClick={onOpenAuditLedger}
+            title="Inspect Immutable Legal Audit Trail (Admin Privileges Active)"
+            style={{
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              color: '#F59E0B',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.22)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.12)')}
+          >
+            <ShieldCheck size={14} color="#F59E0B" />
+            <span>Audit Ledger</span>
+            <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: '10px', background: '#F59E0B', color: '#000', fontWeight: 700, textTransform: 'uppercase' }}>Admin</span>
+          </button>
+        )}
+
         {/* Telemetry Button */}
-
-
         <button
           onClick={onToggleTelemetry}
           style={{
@@ -123,9 +151,34 @@ export const Header: React.FC<HeaderProps> = ({
         {/* User Account / Auth Button */}
         {currentUser ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Dynamic Model Selector Badge */}
+            <button
+              onClick={() => onOpenProfileModal('model')}
+              title="Configure AI Model & BYOK Provider (Click to change)"
+              style={{
+                background: 'rgba(245, 158, 11, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                color: '#F59E0B',
+                padding: '5px 12px',
+                borderRadius: '20px',
+                fontSize: '0.80rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.22)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(245, 158, 11, 0.12)')}
+            >
+              <Cpu size={13} color="#F59E0B" />
+              <span>{currentUser.llm_model || 'gemini-3.5-flash-lite'}</span>
+            </button>
+
             <div
-              onClick={onOpenProfileModal}
-              title="View Account Details & Token Usage"
+              onClick={() => onOpenProfileModal('usage')}
+              title="View Lifetime Token Analytics & Account Details"
               style={{
                 display: 'flex',
                 alignItems: 'center',

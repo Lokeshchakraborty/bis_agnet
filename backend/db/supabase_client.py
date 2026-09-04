@@ -19,6 +19,7 @@ logger = logging.getLogger("bis_supabase")
 # Global instances
 _supabase_client = None
 _async_engine = None
+_async_engine_loop = None
 
 
 def hash_password(password: str) -> str:
@@ -52,9 +53,21 @@ def get_supabase_client():
 
 def get_async_db_engine():
     """Retrieve or initialize SQLAlchemy Async Engine for Supabase PostgreSQL pool."""
-    global _async_engine
+    global _async_engine, _async_engine_loop
+
+    current_loop = None
+    try:
+        import asyncio
+        current_loop = asyncio.get_running_loop()
+    except Exception:
+        pass
+
     if _async_engine is not None:
-        return _async_engine
+        if _async_engine_loop is not None and current_loop is not None and (_async_engine_loop != current_loop or _async_engine_loop.is_closed()):
+            _async_engine = None
+            _async_engine_loop = None
+        else:
+            return _async_engine
 
     db_url = CONFIG.database_url
     if not db_url:
@@ -78,12 +91,26 @@ def get_async_db_engine():
                 "prepared_statement_cache_size": 0,
             },
         )
+        _async_engine_loop = current_loop
         logger.info("Supabase PostgreSQL AsyncEngine initialized.")
 
         return _async_engine
     except Exception as exc:
         logger.warning("Failed to initialize SQLAlchemy AsyncEngine: %s", exc)
         return None
+
+
+async def close_async_db_engine() -> None:
+    """Gracefully dispose and close SQLAlchemy AsyncEngine pool on server shutdown."""
+    global _async_engine
+    if _async_engine is not None:
+        try:
+            await _async_engine.dispose()
+            logger.info("Supabase PostgreSQL AsyncEngine closed cleanly.")
+        except Exception as exc:
+            logger.warning("Error during AsyncEngine disposal: %s", exc)
+        finally:
+            _async_engine = None
 
 
 async def init_supabase_db() -> bool:
@@ -93,6 +120,7 @@ async def init_supabase_db() -> bool:
         return False
 
     ddl_statements = [
+        "CREATE EXTENSION IF NOT EXISTS vector;",
         """
         CREATE TABLE IF NOT EXISTS users (
             user_id TEXT PRIMARY KEY,
@@ -115,6 +143,7 @@ async def init_supabase_db() -> bool:
         """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS total_tokens_burned INTEGER DEFAULT 0;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS total_queries_count INTEGER DEFAULT 0;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';",
         "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'default_user';",
 
         """
@@ -180,10 +209,13 @@ async def create_user_in_supabase(email: str, password: str, full_name: str) -> 
 
     sql_check = "SELECT user_id FROM users WHERE LOWER(email) = :email;"
     sql_insert = """
-    INSERT INTO users (user_id, email, full_name, password_hash, created_at)
-    VALUES (:user_id, :email, :full_name, :password_hash, NOW())
-    RETURNING user_id, email, full_name, created_at;
+    INSERT INTO users (user_id, email, full_name, password_hash, role, created_at)
+    VALUES (:user_id, :email, :full_name, :password_hash, :role, NOW())
+    RETURNING user_id, email, full_name, role, created_at;
     """
+
+    is_admin = bool("admin" in clean_email or clean_email.endswith("@bis.gov.in"))
+    user_role = "admin" if is_admin else "user"
 
     try:
         from sqlalchemy import text
@@ -199,16 +231,19 @@ async def create_user_in_supabase(email: str, password: str, full_name: str) -> 
                     "email": clean_email,
                     "full_name": full_name,
                     "password_hash": pw_hash,
+                    "role": user_role,
                 },
             )
             row = result.fetchone()
-            logger.info("User created successfully: %s [%s]", clean_email, new_user_id)
+            logger.info("User created successfully: %s [%s] (role=%s)", clean_email, new_user_id, user_role)
             return {
                 "success": True,
                 "user": {
                     "user_id": row.user_id,
                     "email": row.email,
                     "full_name": row.full_name,
+                    "role": user_role,
+                    "is_admin": is_admin,
                     "created_at": row.created_at.isoformat() if row.created_at else "",
                 },
             }
@@ -226,7 +261,7 @@ async def authenticate_user_in_supabase(email: str, password: str) -> Dict[str, 
     if not engine:
         return {"success": False, "error": "Database connection unavailable"}
 
-    sql = "SELECT user_id, email, full_name, password_hash, created_at FROM users WHERE LOWER(email) = :email;"
+    sql = "SELECT user_id, email, full_name, password_hash, role, created_at FROM users WHERE LOWER(email) = :email;"
 
     try:
         from sqlalchemy import text
@@ -239,13 +274,18 @@ async def authenticate_user_in_supabase(email: str, password: str) -> Dict[str, 
             if row.password_hash != pw_hash:
                 return {"success": False, "error": "Invalid email or password."}
 
-            logger.info("User authenticated successfully: %s [%s]", clean_email, row.user_id)
+            user_role = getattr(row, "role", None) or ("admin" if ("admin" in clean_email or clean_email.endswith("@bis.gov.in")) else "user")
+            is_admin = (user_role == "admin")
+
+            logger.info("User authenticated successfully: %s [%s] (is_admin=%s)", clean_email, row.user_id, is_admin)
             return {
                 "success": True,
                 "user": {
                     "user_id": row.user_id,
                     "email": row.email,
                     "full_name": row.full_name,
+                    "role": user_role,
+                    "is_admin": is_admin,
                     "created_at": row.created_at.isoformat() if row.created_at else "",
                 },
             }
@@ -399,9 +439,11 @@ async def delete_session_from_supabase(session_id: str) -> bool:
     try:
         from sqlalchemy import text
         async with engine.begin() as conn:
-            await conn.execute(text(sql), {"session_id": session_id})
-        logger.info("Successfully deleted session '%s' from Supabase PostgreSQL.", session_id)
-        return True
+            res = await conn.execute(text(sql), {"session_id": session_id})
+            deleted = (res.rowcount or 0) > 0
+        if deleted:
+            logger.info("Successfully deleted session '%s' from Supabase PostgreSQL.", session_id)
+        return deleted
     except Exception as exc:
         logger.warning("Failed to delete session '%s' from Supabase: %s", session_id, exc)
         return False
@@ -460,7 +502,9 @@ async def log_audit_to_supabase(audit_record: Dict[str, Any]) -> bool:
                 tu = json.loads(tu)
             except Exception:
                 tu = {}
-        burned = tu.get("total_tokens", 0) if isinstance(tu, dict) else 0
+        burned = 0
+        if isinstance(tu, dict):
+            burned = int(tu.get("turn_llm_tokens") or tu.get("total_tokens") or (tu.get("turn_prompt_tokens", 0) + tu.get("turn_completion_tokens", 0)) or tu.get("session_total_llm_tokens", 0) or 0)
         if user_id and burned > 0:
             await record_token_burn_for_user_in_supabase(user_id, burned)
         return True
@@ -553,14 +597,15 @@ async def get_user_account_usage_from_supabase(user_id: str) -> Dict[str, Any]:
     try:
         from sqlalchemy import text
         async with engine.connect() as conn:
-            # 1. Fetch user record from users table
-            user_sql = "SELECT total_tokens_burned, total_queries_count FROM users WHERE user_id = :user_id;"
-            user_res = await conn.execute(text(user_sql), {"user_id": user_id or "default_user"})
+            # 1. Fetch user record from users table (by user_id or email)
+            user_sql = "SELECT user_id, total_tokens_burned, total_queries_count FROM users WHERE user_id = :identifier OR LOWER(email) = LOWER(:identifier);"
+            user_res = await conn.execute(text(user_sql), {"identifier": user_id or "default_user"})
             user_row = user_res.fetchone()
+            actual_user_id = user_row.user_id if user_row else user_id
 
             # 2. Fetch detailed breakdown from audit_logs
-            logs_sql = "SELECT token_usage FROM audit_logs WHERE user_id = :user_id;"
-            logs_res = await conn.execute(text(logs_sql), {"user_id": user_id or "default_user"})
+            logs_sql = "SELECT token_usage FROM audit_logs WHERE user_id = :uid OR user_id = :identifier;"
+            logs_res = await conn.execute(text(logs_sql), {"uid": actual_user_id, "identifier": user_id})
             rows = logs_res.fetchall()
 
             queries_count = user_row.total_queries_count if (user_row and hasattr(user_row, "total_queries_count") and user_row.total_queries_count is not None) else 0
@@ -581,12 +626,16 @@ async def get_user_account_usage_from_supabase(user_id: str) -> Dict[str, Any]:
                     except Exception:
                         tu = {}
                 if isinstance(tu, dict):
-                    prompt_t += int(tu.get("prompt_tokens", 0) or 0)
-                    comp_t += int(tu.get("completion_tokens", 0) or 0)
-                    log_total += int(tu.get("total_tokens", 0) or 0)
-                    saved_t += int(tu.get("estimated_saved_tokens", 0) or 0)
+                    p = int(tu.get("turn_prompt_tokens") or tu.get("prompt_tokens") or 0)
+                    c = int(tu.get("turn_completion_tokens") or tu.get("completion_tokens") or 0)
+                    t = int(tu.get("turn_llm_tokens") or tu.get("total_tokens") or (p + c) or tu.get("session_total_llm_tokens") or 0)
+                    s = int(tu.get("session_total_saved_tokens") or tu.get("estimated_saved_tokens") or 0)
+                    prompt_t += p
+                    comp_t += c
+                    log_total += t
+                    saved_t += s
 
-            final_total_tokens = max(tokens_count, log_total)
+            final_total_tokens = max(tokens_count, log_total, prompt_t + comp_t)
             final_queries = max(queries_count, log_queries)
 
             return {

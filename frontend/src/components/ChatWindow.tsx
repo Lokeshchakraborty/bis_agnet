@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Sparkles, Zap, ChevronDown, ChevronUp, BookOpen, ArrowRight, Copy, ThumbsUp, ThumbsDown, Share2, Plus, Check } from 'lucide-react';
-import type { ChatMessage } from '../types';
-
-
-
+import { Send, Mic, Sparkles, Zap, ChevronDown, ChevronUp, BookOpen, ArrowRight, Copy, ThumbsUp, ThumbsDown, Share2, Plus, Check, Download, FileText, MessageSquare } from 'lucide-react';
+import type { ChatMessage, UserProfile } from '../types';
+import { BisLogo } from './BisLogo';
 
 interface ChatWindowProps {
   messages: ChatMessage[];
@@ -12,6 +10,8 @@ interface ChatWindowProps {
   isLoading: boolean;
   onSelectFollowUp: (prompt: string) => void;
   backendStatus?: string;
+  currentUser?: UserProfile | null;
+  sessionId?: string;
 }
 
 const GEMINI_HOME_CARDS = [
@@ -19,35 +19,35 @@ const GEMINI_HOME_CARDS = [
     title: 'Gold Hallmarking HUID',
     subtitle: 'Procedure & IS 1417 purity guidelines for jewellery manufacturers',
     prompt: 'What is the procedure for getting a Gold Hallmarking license under BIS?',
-    icon: '✨',
   },
   {
     title: 'CRS Electronics Scheme',
     subtitle: 'Mandatory documentation for MeitY electronics & IT goods',
     prompt: 'What are the required compliance documents for electronics CRS registration?',
-    icon: '📱',
   },
   {
     title: 'FMCS Overseas Certification',
     subtitle: 'Foreign Manufacturers Certification Scheme & AIR rules',
     prompt: 'Explain the Foreign Manufacturers Certification Scheme (FMCS) requirements.',
-    icon: '🌏',
   },
   {
     title: 'Testing Lab Networks',
     subtitle: 'Search BIS & NABL accredited testing laboratory networks',
     prompt: 'How to check BIS recognized testing laboratory networks for steel testing?',
-    icon: '🔬',
   },
 ];
 
 const THINKING_STEPS = [
-  '🔍 Classifying intent & IS standard codes...',
-  '⚡ Checking 0-Token instant response cache...',
-  '📚 Performing BM25 & dense vector retrieval...',
-  '🗄️ Querying Supabase PostgreSQL knowledge base...',
-  '✦ Synthesizing compliance report with IS standards...',
+  'Classifying intent & IS standard codes...',
+  'Checking 0-Token instant response cache...',
+  'Performing BM25 & dense vector retrieval...',
+  'Querying Supabase PostgreSQL knowledge base...',
+  'Synthesizing compliance report with IS standards...',
 ];
+
+const cleanStatusText = (status: string) => {
+  return status.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|🔍|⚡|📚|🗄️|✦|📄|📑|💬|⚠️|🎤/gu, '').trim();
+};
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   messages,
@@ -56,13 +56,62 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   isLoading,
   onSelectFollowUp,
   backendStatus,
+  currentUser,
+  sessionId,
 }) => {
 
   const [inputText, setInputText] = useState('');
   const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [downloadingMsgId, setDownloadingMsgId] = useState<string | null>(null);
   const [loadingStepIdx, setLoadingStepIdx] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleDownloadPdf = async (msg: ChatMessage) => {
+    setDownloadingMsgId(msg.id);
+    try {
+      const payload = {
+        query: msg.query || (msg.text.length > 60 ? msg.text.substring(0, 60) + '...' : msg.text),
+        core_response: msg.response?.core_response || msg.text,
+        applicable_standards: msg.response?.applicable_standards || [],
+        next_step: msg.response?.next_step || '',
+        intent: msg.response?.intent || 'compliance',
+        user_name: currentUser?.full_name || 'Compliance Applicant',
+        session_id: sessionId || 'default',
+      };
+
+      const res = await fetch('/api/v1/export/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(`PDF Export failed with HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const disposition = res.headers.get('Content-Disposition');
+      let filename = 'BIS_Compliance_Research_Dossier.pdf';
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) filename = match[1];
+      }
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('PDF download error:', err);
+      alert('Unable to generate PDF dossier. Please check backend connectivity.');
+    } finally {
+      setDownloadingMsgId(null);
+    }
+  };
 
   useEffect(() => {
     if (!isLoading) {
@@ -212,17 +261,37 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   </p>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{card.subtitle}</span>
-                    <span style={{ fontSize: '1.3rem', padding: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }}>{card.icon}</span>
+                    <span style={{ padding: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center' }}><BisLogo size={18} /></span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
         ) : (
-          messages.map((msg) => {
+          messages.map((msg, idx) => {
             const isUser = msg.sender === 'user';
             const res = msg.response;
             const isDetailsOpen = expandedDetails[msg.id] || false;
+
+            // Check if user specifically requested PDF, full compliance, or full research
+            const prevUserText = (idx > 0 && messages[idx - 1].sender === 'user' ? messages[idx - 1].text : '').toLowerCase();
+            const currentQueryText = (msg.query || '').toLowerCase();
+            const assistantText = (res?.next_step || res?.core_response || '').toLowerCase();
+            const combinedInquiry = `${prevUserText} ${currentQueryText}`;
+
+            const isPdfRequested =
+              combinedInquiry.includes('pdf') ||
+              combinedInquiry.includes('full compliance') ||
+              combinedInquiry.includes('complete compliance') ||
+              combinedInquiry.includes('full research') ||
+              combinedInquiry.includes('complete research') ||
+              combinedInquiry.includes('full dossier') ||
+              combinedInquiry.includes('compliance dossier') ||
+              combinedInquiry.includes('research dossier') ||
+              combinedInquiry.includes('download pdf') ||
+              combinedInquiry.includes('give me a pdf') ||
+              assistantText.includes('pdf dossier') ||
+              assistantText.includes('download research pdf');
 
             return (
               <div
@@ -264,15 +333,41 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
 
                         {/* Action Toolbar */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '18px', marginTop: '14px', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '14px', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                           <button
                             onClick={() => handleCopyText(msg.id, msg.text)}
                             style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem' }}
                             title="Copy response"
                           >
                             {copiedMsgId === msg.id ? <Check size={16} color="#10B981" /> : <Copy size={16} />}
-                            <span>{copiedMsgId === msg.id ? 'Copied' : ''}</span>
+                            <span>{copiedMsgId === msg.id ? 'Copied' : 'Copy'}</span>
                           </button>
+
+                          {/* Dedicated Export Research PDF Button (ONLY when user requested PDF, full compliance, or full research) */}
+                          {isPdfRequested && (
+                            <button
+                              onClick={() => handleDownloadPdf(msg)}
+                              disabled={downloadingMsgId === msg.id}
+                              style={{
+                                background: 'rgba(245, 158, 11, 0.12)',
+                                border: '1px solid rgba(245, 158, 11, 0.35)',
+                                color: '#F59E0B',
+                                borderRadius: '16px',
+                                padding: '5px 12px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontSize: '0.82rem',
+                                fontWeight: 600,
+                                transition: 'all 0.2s ease',
+                              }}
+                              title="Download official BIS Compliance Research Dossier (PDF)"
+                            >
+                              {downloadingMsgId === msg.id ? <Download size={14} className="animate-spin" /> : <FileText size={14} />}
+                              <span>{downloadingMsgId === msg.id ? 'Generating PDF...' : 'Export Research PDF'}</span>
+                            </button>
+                          )}
 
                           <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Good response">
                             <ThumbsUp size={16} />
@@ -286,6 +381,60 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             <Share2 size={16} />
                           </button>
                         </div>
+
+                        {/* Interactive Full Research PDF Dossier Card (ONLY if user asked for PDF, full compliance, or full research) */}
+                        {res && isPdfRequested && (
+                          <div
+                            style={{
+                              marginTop: '14px',
+                              padding: '12px 16px',
+                              borderRadius: '12px',
+                              background: 'linear-gradient(135deg, rgba(217, 119, 6, 0.12) 0%, rgba(15, 43, 92, 0.2) 100%)',
+                              border: '1px solid rgba(245, 158, 11, 0.35)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '12px',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <BisLogo size={24} />
+                              <div>
+                                <div style={{ fontWeight: 600, color: '#F59E0B', fontSize: '0.88rem' }}>
+                                  Official BIS Compliance Research Dossier (PDF)
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                  Includes authoritative IS standard titles, technical limits, licensing roadmap & SHA-256 audit hash.
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleDownloadPdf(msg)}
+                              disabled={downloadingMsgId === msg.id}
+                              style={{
+                                background: '#F59E0B',
+                                color: '#0f172a',
+                                border: 'none',
+                                borderRadius: '20px',
+                                padding: '6px 16px',
+                                fontWeight: 700,
+                                fontSize: '0.82rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
+                                transition: 'transform 0.15s ease',
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
+                              onMouseLeave={(e) => (e.currentTarget.style.transform = 'none')}
+                            >
+                              <Download size={14} />
+                              <span>{downloadingMsgId === msg.id ? 'Compiling Dossier...' : 'Download PDF'}</span>
+                            </button>
+                          </div>
+                        )}
 
                         {/* Gemini Expandable Telemetry Accordion */}
                         {res && (
@@ -305,9 +454,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                                 padding: '8px 14px',
                               }}
                             >
-                              <Sparkles size={14} color="var(--gemini-purple)" />
+                              <BisLogo size={16} />
                               <span>
-                                {res.applicable_standards?.length ? `✦ View ${res.applicable_standards.length} IS Codes & Technical Telemetry` : '✦ View Technical Telemetry'}
+                                {res.applicable_standards?.length ? `View ${res.applicable_standards.length} IS Codes & Technical Telemetry` : 'View Technical Telemetry'}
                               </span>
                               {isDetailsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                             </button>
@@ -318,7 +467,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   {res.cache_hit ? (
                                     <span style={{ color: 'var(--gemini-gold)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <Zap size={15} /> ⚡ 0-Token Instant Cache Hit
+                                      <Zap size={15} /> 0-Token Instant Cache Hit
                                     </span>
                                   ) : (
                                     <span style={{ color: 'var(--gemini-cyan)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -377,7 +526,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                                     gap: '8px',
                                   }}
                                 >
-                                  💬 {res.follow_up_prompt}
+                                  <MessageSquare size={14} />
+                                  <span>{res.follow_up_prompt}</span>
                                 </button>
                               </div>
                             )}
@@ -392,25 +542,28 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           })
         )}
 
-        {/* Plain White Text Retrieval State with Wave Transition */}
+        {/* Clean Retrieval State Indicator with small Animated BIS Logo */}
         {isLoading && (
-          <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%', padding: '16px 0' }}>
+          <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%', padding: '16px 20px' }}>
             <div
               style={{
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '10px',
-                background: 'transparent',
-                border: 'none',
-                boxShadow: 'none',
+                gap: '12px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--glass-border)',
+                borderRadius: '16px',
+                padding: '10px 18px',
                 color: '#FFFFFF',
-                fontSize: '1.05rem',
+                fontSize: '0.98rem',
                 fontWeight: 500,
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
               }}
               className="animate-fade-in"
             >
+              <BisLogo size={22} animated />
               <span className="gemini-wave-text" style={{ color: '#FFFFFF', fontWeight: 500, letterSpacing: '-0.01em' }}>
-                {backendStatus || THINKING_STEPS[loadingStepIdx]}
+                {cleanStatusText(backendStatus || THINKING_STEPS[loadingStepIdx])}
               </span>
             </div>
           </div>
@@ -440,8 +593,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             {/* Plus Attachment Icon */}
             <button
               type="button"
-              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-              title="Add attachment"
+              onClick={() => alert('📄 Document & Standard PDF attachment support is coming in the next BIS SATHI update.')}
+              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'color 0.2s ease' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--gemini-purple)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+              title="Attach standard document / specification (Coming soon)"
             >
               <Plus size={22} />
             </button>

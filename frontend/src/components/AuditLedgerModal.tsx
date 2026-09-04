@@ -54,9 +54,14 @@ export const AuditLedgerModal: React.FC<AuditLedgerModalProps> = ({ isOpen, onCl
               <Key size={24} />
             </div>
             <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF' }}>Immutable Supabase Audit Ledger</h2>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Tamper-evident legal & regulatory audit records stored in Supabase PostgreSQL
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF' }}>Immutable Supabase Audit Ledger</h2>
+                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#F59E0B', fontWeight: 700, textTransform: 'uppercase' }}>
+                  Admin / Officer Restricted
+                </span>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Tamper-evident legal & regulatory audit records stored in Supabase PostgreSQL (Legal non-repudiation)
               </p>
             </div>
           </div>

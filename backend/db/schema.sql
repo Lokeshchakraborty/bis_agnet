@@ -2,8 +2,9 @@
 -- Supabase Schema for BIS Agentic RAG Assistant (BIS SATHI)
 -- =============================================================================
 
--- Enable uuid extension if needed
+-- Enable uuid and vector extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- 0. Users Table for User Registration & Auth
 CREATE TABLE IF NOT EXISTS users (

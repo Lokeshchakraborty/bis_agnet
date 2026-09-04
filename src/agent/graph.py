@@ -16,10 +16,12 @@ from src.config import CONFIG
 from src.schemas import DOMAIN_COLLECTIONS, AgentState, Intent, TokenTracker
 from src.tools.cache import ResponseCache
 
+from src.tools.vector_store import get_vector_store
+
 logger = logging.getLogger("bis_graph")
 
 
-def initialize_components() -> Tuple[ChatGoogleGenerativeAI, any, any, Dict[str, Chroma]]:
+def initialize_components() -> Tuple[ChatGoogleGenerativeAI, any, any, Dict[str, any]]:
     """Initialize LLM, Embeddings, Catalog Retriever, and Domain Collections."""
     provider = CONFIG.embedding_provider.lower()
     if provider == "fastembed":
@@ -36,19 +38,13 @@ def initialize_components() -> Tuple[ChatGoogleGenerativeAI, any, any, Dict[str,
     llm = ChatGoogleGenerativeAI(model=CONFIG.llm_model, temperature=CONFIG.llm_temperature)
 
     # Catalog retriever (default collection)
-    catalog_retriever = Chroma(
-        persist_directory=CONFIG.db_path,
-        embedding_function=embeddings,
-    ).as_retriever(search_kwargs={"k": CONFIG.retriever_k})
+    catalog_vector_store = get_vector_store("catalog_search", embeddings)
+    catalog_retriever = catalog_vector_store.as_retriever(search_kwargs={"k": CONFIG.retriever_k})
 
-    # Domain Chroma DBs
-    domain_chromadbs: Dict[str, Chroma] = {}
+    # Domain Vector DBs (PGVector on Supabase or local Chroma)
+    domain_chromadbs: Dict[str, any] = {}
     for domain in DOMAIN_COLLECTIONS:
-        domain_chromadbs[domain.value] = Chroma(
-            collection_name=domain.value,
-            persist_directory=CONFIG.db_path,
-            embedding_function=embeddings,
-        )
+        domain_chromadbs[domain.value] = get_vector_store(domain.value, embeddings)
 
     return llm, embeddings, catalog_retriever, domain_chromadbs
 

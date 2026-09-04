@@ -57,4 +57,7 @@ langchain-openrouter
 supabase>=2.0.0
 asyncpg>=0.29.0
 sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.9
+psycopg2-binary>=2.9.9
+psycopg[binary,pool]>=3.1.0
+langchain-postgres>=0.0.12
+

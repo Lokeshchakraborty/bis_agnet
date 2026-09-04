@@ -12,8 +12,14 @@ from __future__ import annotations
 import argparse
 import logging
 import shutil
+import sys
 import time
 from pathlib import Path
+
+# Ensure project root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 from typing import Dict, List
 
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
@@ -27,6 +33,7 @@ from langchain_ollama import OllamaEmbeddings
 from src.config import CONFIG, DATA_DIR
 from src.schemas import DOMAIN_COLLECTIONS
 from src.tools.retriever import reset_bm25_cache
+from src.tools.vector_store import get_vector_store, delete_vector_collection
 
 logger = logging.getLogger("bis_ingestion")
 
@@ -119,39 +126,28 @@ def ingest_segment(segment: str, embeddings: Embeddings, reset: bool = True) -> 
     if not chunks:
         return 0
 
-    # 4. Ingest into Chroma Collection
-    db = Chroma(
-        collection_name=segment,
-        embedding_function=embeddings,
-        persist_directory=str(PERSIST_DIR),
-    )
-
+    # 4. Ingest into Vector Store (PGVector or Chroma)
     if reset:
-        try:
-            db.delete_collection()
-            db = Chroma(
-                collection_name=segment,
-                embedding_function=embeddings,
-                persist_directory=str(PERSIST_DIR),
-            )
-        except Exception:
-            pass
+        delete_vector_collection(segment, embeddings)
 
-    batch_size = 100
+    db = get_vector_store(segment, embeddings)
+
+    batch_size = 50
     t_start = time.time()
     for b_idx in range(0, len(chunks), batch_size):
         batch = chunks[b_idx : b_idx + batch_size]
         db.add_documents(batch)
 
     t_total = time.time() - t_start
-    total_in_db = db._collection.count()
+    total_chunks = len(chunks)
     logger.info(
-        "Domain '%s' complete: %d chunks embedded in %.2fs.",
+        "Domain '%s' complete: %d chunks embedded into %s in %.2fs.",
         segment,
-        total_in_db,
+        total_chunks,
+        CONFIG.vector_store_type.upper(),
         t_total,
     )
-    return total_in_db
+    return total_chunks
 
 
 def ingest_all(clean_db: bool = False) -> None:

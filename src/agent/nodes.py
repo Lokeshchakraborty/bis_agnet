@@ -100,11 +100,12 @@ def _needs_rewrite(query: str) -> bool:
 
 
 FAST_INTENT_PATTERNS = [
-    (Intent.HALLMARK, re.compile(r"\b(hallmark|huid|ahc|assaying)\b", re.I)),
-    (Intent.REGISTRATION, re.compile(r"\b(crs|compulsory registration|meity)\b", re.I)),
-    (Intent.CERTIFICATION, re.compile(r"\b(isi mark|fmcs|qco|quality control order|cml number)\b", re.I)),
-    (Intent.LABORATORY, re.compile(r"\b(laboratory|testing lab|lrs|lims|prayogshala)\b", re.I)),
+    (Intent.HALLMARK, re.compile(r"\b(hallmark|hallmarking|huid|ahc|assaying|gold|silver|sona|chandi|carat|karat|हॉलमार्क|हॉलमार्किंग|सोना|चांदी)\b", re.I)),
+    (Intent.REGISTRATION, re.compile(r"\b(crs|compulsory registration|meity|electronics registration)\b", re.I)),
+    (Intent.CERTIFICATION, re.compile(r"\b(isi mark|fmcs|qco|quality control order|cml number|foreign manufacturer)\b", re.I)),
+    (Intent.LABORATORY, re.compile(r"\b(laboratory|testing lab|lrs|lims|prayogshala|प्रयोगशाला|परीक्षण)\b", re.I)),
     (Intent.MANAKONLINE, re.compile(r"\b(manakonline|manak online|e-bis|e-cml)\b", re.I)),
+    (Intent.CATALOG_SEARCH, re.compile(r"\b(pipe|pipes|cement|steel|tank|tanks|cable|cables|battery|batteries|helmet|helmets|toy|toys|wire|wires|plywood|fertilizer|glass|cooker)\b", re.I)),
 ]
 
 
@@ -256,15 +257,15 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
     def retrieve_domain(self, domain: Intent):
         """Factory: returns a retrieval node for domain PDFs using hybrid BM25 + dense retrieval."""
         def _node(state: AgentState) -> dict:
-            chroma_db = self.domain_chromadbs.get(domain.value)
+            vector_db = self.domain_chromadbs.get(domain.value)
             self.token_tracker.add_embedding_text(state["standalone_query"])
-            if chroma_db is None:
+            if vector_db is None:
                 return {"retrieved_context": "No database collection found.", "domain": domain.value}
 
             try:
                 _, context = hybrid_retrieve(
                     query=state["standalone_query"],
-                    chroma_db=chroma_db,
+                    vector_store=vector_db,
                     embeddings=self.embeddings,
                     domain=domain.value,
                     dense_k=CONFIG.retriever_k,
@@ -274,7 +275,7 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
             except Exception as exc:
                 logger.warning("Hybrid retrieval failed for '%s', using fallback: %s", domain.value, exc)
                 try:
-                    docs = chroma_db.as_retriever(search_kwargs={"k": CONFIG.retriever_k}).invoke(
+                    docs = vector_db.as_retriever(search_kwargs={"k": CONFIG.retriever_k}).invoke(
                         state["standalone_query"]
                     )
                     context = "\n".join(d.page_content for d in docs) if docs else "No relevant documents found."
@@ -363,44 +364,57 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
                 "3. TECHNICAL PRECISION & UNTOUCHED REGULATORY CODES:\n"
                 "   - Keep all official IS codes, standard numbers, form numbers, and portal URLs exact and uncorrupted:\n"
                 "     * Standards (e.g. 'IS 1417', 'IS 16333 (Part 3):2022', 'IS 2112', 'IS/ISO 9001')\n"
+                "     * Legal Acts: Always cite the exact statutory act as 'Bureau of Indian Standards Act, 2016 (BIS Act, 2016)'\n"
+                "     * Gold Hallmarking Purity: When discussing purity grades under IS 1417, explicitly mention both karat notation and fineness (e.g. 24K / 999, 23K / 958, 22K / 916, 20K / 833, 18K / 750, 14K / 585)\n"
                 "     * Portal names & URLs (e.g. 'Manakonline portal', 'https://manakonline.in', 'e-BIS')\n"
                 "     * Technical abbreviations (e.g. 'HUID', 'AHC', 'CRS', 'FMCS', 'CML', 'QCO', 'AIR')\n"
                 "   - applicable_standards: List every relevant IS standard code formatted as 'IS XXXX - Description'.\n"
                 "   - source_citation: If context has '[Source N: filename]', cite the exact file name(s).\n\n"
-                "4. STANDARDIZED COMPLIANCE RESPONSE FORMATTING (WITH NUMBERED SUB-ITEMS):\n"
+                "4. STANDARDIZED COMPLIANCE RESPONSE FORMATTING:\n"
                 "   - DO NOT include the heading or text 'Compliance Overview' at the top of core_response.\n"
-                "   - ALWAYS start directly with a clear, informative 2-3 sentence explanation response answering the user's question.\n"
-                "   - AFTER the explanation paragraph, present the compliance breakdown using MAIN BULLET POINTS ('• ') for each category, and ALWAYS INCLUDE INDENTED NUMBERED SUB-ITEMS ('  1. ', '  2. ') under each main category to provide detailed technical points and specifics.\n"
-                "   - Required Main Categories & Numbered Sub-Items Structure:\n"
-                "     • **Applicable Indian Standards for products**:\n"
-                "       1. **Primary Standard**: Exact IS code and title (e.g. **IS 1417:2019**)\n"
-                "       2. **Scope & Purity**: Specific grades, classes, or product scope\n"
-                "     • **Certification requirements**:\n"
-                "       1. **Marking Requirements**: Mandatory ISI Mark / CRS Mark / HUID 6-digit alphanumeric code\n"
-                "       2. **AIR Obligation**: Authorized Indian Representative rules for foreign manufacturers\n"
-                "     • **Relevant BIS schemes**:\n"
-                "       1. **Scheme Name**: Scheme-I (Product Certification), Scheme-IV, CRS, FMCS, Hallmarking Scheme, LRS\n"
-                "     • **Licensing procedures**:\n"
-                "       1. **Portal Application**: Manakonline portal filing (Form H-1 / Form CML)\n"
-                "       2. **Inspection & Audit**: Factory audit and preliminary sample testing rules\n"
-                "     • **Testing requirements**:\n"
-                "       1. **Accredited Testing**: Mandatory NABL/BIS-accredited lab test reports\n"
-                "       2. **Test Parameters**: Specific physical, chemical, mechanical, or safety test parameters\n"
-                "     • **Related standards & Dedicated Amendments**:\n"
-                "       1. **Related IS Codes**: Complementary standards\n"
-                "       2. **Dedicated Amendment Status**: Explicitly state 'Dedicated Amendment Available: Amendment No. X' OR 'No Dedicated Amendment Released'\n"
-                "     • **Answers to technical queries**:\n"
-                "       1. **Quantitative Limits**: State exact numeric thresholds, capacities, tolerances, and test limits\n\n"
+                "   - GENERAL / CONCEPTUAL QUERIES (when NO specific product or IS standard code is mentioned, e.g. 'what is certification?', 'what is hallmarking?', 'what is CRS registration?'):\n"
+                "     * Provide a clear, comprehensive, and well-structured paragraph (or 2-3 paragraphs) answering the question directly in plain language.\n"
+                "     * DO NOT generate the 7-bullet compliance breakdown (Applicable Indian Standards, Certification requirements, etc.) for general concept queries where no specific product or IS code is specified.\n"
+                "     * Use follow_up_prompt to ask the user if they would like technical compliance details for a specific product category or IS standard code.\n"
+                "   - PRODUCT-SPECIFIC & IS CODE QUERIES (when a specific product, e.g. 'watering cans', 'mustard oil', 'cement', or specific IS code, e.g. 'IS 4065', 'IS 12701', is mentioned):\n"
+                "     * ALWAYS start directly with a clear, informative 2-3 sentence overview paragraph answering the user's question.\n"
+                "     * AFTER the explanation paragraph, present the compliance breakdown using MAIN BULLET POINTS ('• ') for each category, and ALWAYS INCLUDE INDENTED NUMBERED SUB-ITEMS ('  1. ', '  2. ') under each main category to provide detailed technical points and specifics.\n"
+                "     * Required Main Categories & Numbered Sub-Items Structure:\n"
+                "       • **Applicable Indian Standards for products**:\n"
+                "         1. **Primary Standard**: Exact IS code and title (e.g. **IS 1417:2019**)\n"
+                "         2. **Scope & Purity**: Specific grades, classes, or product scope\n"
+                "       • **Certification requirements**:\n"
+                "         1. **Marking Requirements**: Mandatory ISI Mark / CRS Mark / HUID 6-digit alphanumeric code\n"
+                "         2. **AIR Obligation**: Authorized Indian Representative rules for foreign manufacturers\n"
+                "       • **Relevant BIS schemes**:\n"
+                "         1. **Scheme Name**: Scheme-I (Product Certification), Scheme-IV, CRS, FMCS, Hallmarking Scheme, LRS\n"
+                "       • **Licensing procedures**:\n"
+                "         1. **Portal Application**: Manakonline portal filing (Form H-1 / Form CML)\n"
+                "         2. **Inspection & Audit**: Factory audit and preliminary sample testing rules\n"
+                "       • **Testing requirements**:\n"
+                "         1. **Accredited Testing**: Mandatory NABL/BIS-accredited lab test reports\n"
+                "         2. **Test Parameters**: Specific physical, chemical, mechanical, or safety test parameters\n"
+                "       • **Related standards & Dedicated Amendments**:\n"
+                "         1. **Related IS Codes**: Complementary standards\n"
+                "         2. **Dedicated Amendment Status**: Explicitly state 'Dedicated Amendment Available: Amendment No. X' OR 'No Dedicated Amendment Released'\n"
+                "       • **Answers to technical queries**:\n"
+                "         1. **Quantitative Limits**: State exact numeric thresholds, capacities, tolerances, and test limits\n\n"
 
 
 
 
                 "5. INDIAN STANDARDS (IS CODE) IDENTIFICATION:\n"
-
                 "   - When queried about a specific IS code (e.g. 'IS 567', 'IS 12269', 'IS 4984', 'IS 12701'), use your authoritative BIS knowledge to identify the official standard title, product subject, and scope if scrape results are partial. Clearly guide the user on how to access the official standard on Manakonline.\n\n"
-                "5. MANDATORY QUANTITATIVE & PARAMETER EXTRACTION (CRITICAL):\n"
+                "6. MANDATORY QUANTITATIVE & PARAMETER EXTRACTION (CRITICAL):\n"
                 "   - If the user asks for specific technical parameters, maximum/minimum limits, capacities, dimensions, tolerances, or chemical/physical test thresholds (e.g., maximum capacity limit of 10,000 Litres and overall chemical migration limit of 60 mg/l max for IS 12701 polyethylene water storage tanks), YOU MUST EXTRACT AND STATE THE EXACT NUMBERS, VALUES, AND UNITS IN YOUR core_response.\n"
+                "   - FORMATTING WITH MARKDOWN TABLES: Whenever comparing multiple grades, karats, sizes, or technical thresholds, format them as clean Markdown tables (| Grade / Parameter | Purity / Limit | Standard |).\n"
                 "   - DO NOT play it too safe or dodge by telling the user to 'refer to the portal' or stating that 'tests exist' without giving the numbers. Always state the exact quantitative numbers, limits, and technical values first in core_response, and provide the portal URL in next_step as an actionable follow-up.\n\n"
+                "7. PDF & COMPREHENSIVE RESEARCH DOSSIER GENERATION:\n"
+                "   - When the user explicitly asks for a 'pdf', 'dossier', 'full compliance', or 'full research' (e.g. 'give me a pdf', 'download as pdf', 'give full compliance', 'full research'):\n"
+                "     * Deliver the complete, comprehensive research breakdown covering all relevant IS standards, technical parameters, and licensing procedures in core_response.\n"
+                "     * In next_step, clearly state: 'Your official BIS Compliance Research Dossier (PDF) has been compiled. Click the \"📄 Download Research PDF\" button below to save the official document.'\n"
+                "     * Ensure all applicable IS standards and quantitative limits are listed completely.\n"
+                "   - For normal queries where the user did NOT ask for a PDF, full compliance, or full research, DO NOT mention or offer PDF download in next_step.\n\n"
                 "Chat history:\n{chat_history}\n\nContext:\n{context}"
             )
 

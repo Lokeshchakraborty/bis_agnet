@@ -10,8 +10,12 @@ import logging
 import re
 import requests
 from bs4 import BeautifulSoup
+import sys
 from pathlib import Path
-from typing import List, Dict
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import CONFIG, DATA_DIR
 from src.ingestion.build_vectordb import ingest_segment, get_embeddings_model

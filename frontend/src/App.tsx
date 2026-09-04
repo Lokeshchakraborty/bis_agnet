@@ -7,6 +7,7 @@ import { TelemetryPanel } from './components/TelemetryPanel';
 import { AuthModal } from './components/AuthModal';
 import { LandingPage } from './components/LandingPage';
 import { UserProfileModal } from './components/UserProfileModal';
+import { AuditLedgerModal } from './components/AuditLedgerModal';
 import type { HealthResponse, ChatMessage, QueryResponse, VoiceQueryResponse, UserProfile } from './types';
 
 
@@ -21,6 +22,13 @@ export const App: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileModalTab, setProfileModalTab] = useState<'details' | 'model' | 'usage'>('usage');
+  const [isAuditLedgerOpen, setIsAuditLedgerOpen] = useState(false);
+
+  const handleOpenProfileModal = (tab: 'details' | 'model' | 'usage' = 'usage') => {
+    setProfileModalTab(tab);
+    setIsProfileModalOpen(true);
+  };
 
   const [activeSessionId, setActiveSessionId] = useState<string>('default');
   const [sessions, setSessions] = useState<{ session_id: string; history_turns: number; last_query?: string }[]>([]);
@@ -92,7 +100,7 @@ export const App: React.FC = () => {
 
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
-    setCurrentBackendStatus('🔍 Classifying intent & IS standard codes...');
+    setCurrentBackendStatus('Classifying intent & IS standard codes...');
 
     try {
       const response = await fetch('/api/v1/query/stream', {
@@ -102,6 +110,10 @@ export const App: React.FC = () => {
           query: queryText,
           session_id: activeSessionId,
           user_id: currentUser?.user_id || 'default_user',
+          llm_provider: currentUser?.llm_provider,
+          llm_model: currentUser?.llm_model,
+          llm_api_key: currentUser?.llm_api_key,
+          llm_base_url: currentUser?.llm_base_url,
         }),
       });
 
@@ -292,8 +304,9 @@ export const App: React.FC = () => {
         health={health}
         currentUser={currentUser}
         onToggleTelemetry={() => setIsTelemetryOpen((prev) => !prev)}
+        onOpenAuditLedger={() => setIsAuditLedgerOpen(true)}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
-        onOpenProfileModal={() => setIsProfileModalOpen(true)}
+        onOpenProfileModal={handleOpenProfileModal}
         onLogout={handleLogout}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
       />
@@ -312,7 +325,7 @@ export const App: React.FC = () => {
           onClearCache={handleClearCache}
           onSelectPrompt={(prompt) => handleSendMessage(prompt)}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
-          onOpenProfileModal={() => setIsProfileModalOpen(true)}
+          onOpenProfileModal={() => handleOpenProfileModal('usage')}
           onLogout={handleLogout}
           isOpen={isSidebarOpen}
         />
@@ -325,6 +338,8 @@ export const App: React.FC = () => {
           isLoading={isLoading}
           onSelectFollowUp={(prompt) => handleSendMessage(prompt)}
           backendStatus={currentBackendStatus}
+          currentUser={currentUser}
+          sessionId={activeSessionId}
         />
 
 
@@ -342,6 +357,8 @@ export const App: React.FC = () => {
         onClose={() => setIsProfileModalOpen(false)}
         currentUser={currentUser}
         lastResponse={lastResponse}
+        initialTab={profileModalTab}
+        onUpdateUser={(updated) => setCurrentUser(updated)}
       />
 
       <AuthModal
@@ -356,6 +373,11 @@ export const App: React.FC = () => {
         onClose={() => setIsVoiceModalOpen(false)}
         sessionId={activeSessionId}
         onVoiceSuccess={handleVoiceSuccess}
+      />
+
+      <AuditLedgerModal
+        isOpen={isAuditLedgerOpen}
+        onClose={() => setIsAuditLedgerOpen(false)}
       />
     </div>
   );

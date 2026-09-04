@@ -208,14 +208,14 @@ class Session:
             yield {"type": "error", "message": "Session turn cap exceeded."}
             return
 
-        yield {"type": "status", "message": "🔍 Classifying intent & IS standard codes..."}
+        yield {"type": "status", "message": "Classifying intent & IS standard codes..."}
 
         effective_query = user_query
         if self.active_product_context and len(user_query.split()) <= 4:
             effective_query = f"{user_query} (Product Context: {self.active_product_context})"
 
         # 1. Front-Loaded Cache Check
-        yield {"type": "status", "message": "⚡ Checking 0-Token instant response cache..."}
+        yield {"type": "status", "message": "Checking 0-Token instant response cache..."}
         if CONFIG.cache_enabled:
             fast_intent = _fast_classify(user_query)
             intents_to_check = (
@@ -228,7 +228,7 @@ class Session:
                 cached = self.response_cache.get(key)
 
                 if cached:
-                    yield {"type": "status", "message": "⚡ Instant 0-Token cache hit!"}
+                    yield {"type": "status", "message": "Instant 0-Token cache hit!"}
                     self.token_tracker.record_cache_hit(estimated_saved=750)
                     output = BISResponse(**{k: cached[k] for k in BISResponse.model_fields if k in cached})
                     self.history.append((user_query, output.core_response))
@@ -274,15 +274,15 @@ class Session:
                     return
 
         # 2. Dense Vector & BM25 Search
-        yield {"type": "status", "message": "📚 Performing BM25 & dense vector retrieval..."}
+        yield {"type": "status", "message": "Performing BM25 & dense vector retrieval..."}
         await asyncio.sleep(0.1)
 
         # 3. Supabase Database Query
-        yield {"type": "status", "message": "🗄️ Querying Supabase PostgreSQL knowledge base..."}
+        yield {"type": "status", "message": "Querying Supabase PostgreSQL knowledge base..."}
         await asyncio.sleep(0.1)
 
         # 4. LLM Generation & Synthesis
-        yield {"type": "status", "message": "✦ Synthesizing compliance report with IS standards..."}
+        yield {"type": "status", "message": "Synthesizing compliance report with IS standards..."}
 
         inputs: AgentState = {
             "query": effective_query,
