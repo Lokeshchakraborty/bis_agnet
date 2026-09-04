@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Mic, Square, X, Send, Loader2, Volume2 } from 'lucide-react';
 import type { VoiceQueryResponse } from '../types';
+import { getApiUrl } from '../config';
+
 
 
 interface VoiceRecorderModalProps {
@@ -80,7 +82,7 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
       formData.append('file', recordingBlob, 'recording.webm');
       formData.append('session_id', sessionId);
 
-      const response = await fetch('/api/v1/voice-query', {
+      const response = await fetch(getApiUrl('/api/v1/voice-query'), {
         method: 'POST',
         body: formData,
       });

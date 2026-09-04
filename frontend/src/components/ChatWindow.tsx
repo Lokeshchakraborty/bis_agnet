@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, Mic, Sparkles, Zap, ChevronDown, ChevronUp, BookOpen, ArrowRight, Copy, ThumbsUp, ThumbsDown, Share2, Plus, Check, Download, FileText, MessageSquare } from 'lucide-react';
 import type { ChatMessage, UserProfile } from '../types';
 import { BisLogo } from './BisLogo';
+import { getApiUrl } from '../config';
+
 
 interface ChatWindowProps {
   messages: ChatMessage[];
@@ -80,7 +82,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         session_id: sessionId || 'default',
       };
 
-      const res = await fetch('/api/v1/export/pdf', {
+      const res = await fetch(getApiUrl('/api/v1/export/pdf'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

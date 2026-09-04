@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getApiUrl } from './config';
 import { Header } from './components/Header';
 import { SessionSidebar } from './components/SessionSidebar';
 import { ChatWindow } from './components/ChatWindow';
@@ -44,7 +45,7 @@ export const App: React.FC = () => {
   // Fetch API Health & Active Sessions
   const fetchHealth = async () => {
     try {
-      const res = await fetch('/health');
+      const res = await fetch(getApiUrl('/health'));
       if (res.ok) {
         const data: HealthResponse = await res.json();
         setHealth(data);
@@ -58,7 +59,7 @@ export const App: React.FC = () => {
   const fetchSessions = async (targetUserId?: string) => {
     const userId = targetUserId || currentUser?.user_id || 'default_user';
     try {
-      const res = await fetch(`/api/v1/sessions?user_id=${encodeURIComponent(userId)}`);
+      const res = await fetch(getApiUrl(`/api/v1/sessions?user_id=${encodeURIComponent(userId)}`));
       if (res.ok) {
         const data = await res.json();
         setSessions(data.sessions || []);
@@ -103,7 +104,7 @@ export const App: React.FC = () => {
     setCurrentBackendStatus('Classifying intent & IS standard codes...');
 
     try {
-      const response = await fetch('/api/v1/query/stream', {
+      const response = await fetch(getApiUrl('/api/v1/query/stream'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -206,7 +207,7 @@ export const App: React.FC = () => {
     setMessages([]);
     setLastResponse(null);
     try {
-      const res = await fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}`);
+      const res = await fetch(getApiUrl(`/api/v1/sessions/${encodeURIComponent(sessionId)}`));
       if (res.ok) {
         const data = await res.json();
         if (data.history && Array.isArray(data.history)) {
@@ -256,7 +257,7 @@ export const App: React.FC = () => {
     }
 
     try {
-      await fetch(`/api/v1/sessions/${encodeURIComponent(sessionIdToClear)}`, { method: 'DELETE' });
+      await fetch(getApiUrl(`/api/v1/sessions/${encodeURIComponent(sessionIdToClear)}`), { method: 'DELETE' });
       await fetchSessions();
     } catch (err) {
       console.error('Clear session error:', err);
@@ -265,7 +266,7 @@ export const App: React.FC = () => {
 
   const handleClearCache = async () => {
     try {
-      await fetch('/api/v1/cache/clear', { method: 'POST' });
+      await fetch(getApiUrl('/api/v1/cache/clear'), { method: 'POST' });
       alert('Persistent Response Cache purged successfully!');
     } catch (err) {
       alert('Failed to clear cache.');

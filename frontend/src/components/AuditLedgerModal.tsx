@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, Zap, RefreshCw, Key } from 'lucide-react';
 import type { AuditLogRecord } from '../types';
+import { getApiUrl } from '../config';
 
 
 interface AuditLedgerModalProps {
@@ -17,7 +18,7 @@ export const AuditLedgerModal: React.FC<AuditLedgerModalProps> = ({ isOpen, onCl
   const fetchLogs = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/v1/audit-logs?limit=50');
+      const res = await fetch(getApiUrl('/api/v1/audit-logs?limit=50'));
       if (res.ok) {
         const data = await res.json();
         setLogs(data);

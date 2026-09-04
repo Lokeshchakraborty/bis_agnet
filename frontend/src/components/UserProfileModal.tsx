@@ -4,6 +4,7 @@ import {
   Loader2, Cpu, Zap, Eye, EyeOff, RefreshCw, Flame
 } from 'lucide-react';
 import type { UserProfile, QueryResponse } from '../types';
+import { getApiUrl } from '../config';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -149,7 +150,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
     try {
       setIsRefreshingUsage(true);
-      const res = await fetch(`/api/v1/auth/user-usage/${encodeURIComponent(identifier)}`);
+      const res = await fetch(getApiUrl(`/api/v1/auth/user-usage/${encodeURIComponent(identifier)}`));
       if (res.ok) {
         const data: UserAccountUsage = await res.json();
         setAccountUsage(data);
@@ -289,7 +290,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     setIsChangingPassword(true);
 
     try {
-      const res = await fetch('/api/v1/auth/change-password', {
+      const res = await fetch(getApiUrl('/api/v1/auth/change-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
