@@ -20,7 +20,9 @@ services:
       - key: LLM_MODEL
         value: gemini-3.6-flash
       - key: EMBEDDING_PROVIDER
-        value: fastembed
+        value: MistralAIEmbeddings
+      - key: EMBEDDING_MODEL
+        value: mistral-embed-2312
       - key: HOST
         value: 0.0.0.0
       - key: PORT
