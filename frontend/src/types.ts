@@ -122,4 +122,5 @@ export interface ChatMessage {
   query?: string;
   response?: QueryResponse;
   timestamp: string;
+  isStreaming?: boolean;
 }

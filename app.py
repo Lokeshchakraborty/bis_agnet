@@ -16,11 +16,13 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, Path as APIPath, UploadFile, Form, status
+import time
+from fastapi import FastAPI, File, HTTPException, Path as APIPath, UploadFile, Form, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from src.agent.session import Session, SessionRateLimitException
 from src.config import CONFIG, validate_environment
 from src.schemas import BISResponse, ComplianceMetadata, ConfidenceMetrics, AuditMetadata, APIErrorPayload
@@ -32,40 +34,48 @@ logger = logging.getLogger("bis_api")
 # In-Memory Session Manager
 # --------------------------------------------------------------------------- #
 class SessionManager:
-    """Manages active conversation sessions mapped by session ID."""
+    """Manages active conversation sessions mapped strictly by (user_id, session_id) composite keys."""
 
     def __init__(self) -> None:
-        self._sessions: Dict[str, Session] = {}
+        self._sessions: Dict[Tuple[str, str], Session] = {}
 
-    def get_session(self, session_id: str) -> Session:
-        """Retrieve existing session or create a new one."""
-        if session_id not in self._sessions:
-            logger.info("Initializing new session: %s", session_id)
-            self._sessions[session_id] = Session()
-        return self._sessions[session_id]
+    def get_session(self, session_id: str, user_id: str = "default_user") -> Session:
+        """Retrieve existing session or create a new isolated session for (user_id, session_id)."""
+        uid = user_id or "default_user"
+        key = (uid, session_id)
+        if key not in self._sessions:
+            logger.info("Initializing new isolated session: %s for user: %s", session_id, uid)
+            self._sessions[key] = Session()
+        return self._sessions[key]
 
-    def list_sessions(self) -> List[Dict]:
-        """Summarize active session states."""
+    def list_sessions(self, user_id: Optional[str] = None) -> List[Dict]:
+        """Summarize active session states filtered strictly by user_id."""
         summaries = []
-        for sid, sess in self._sessions.items():
-            summaries.append({
-                "session_id": sid,
-                "history_turns": len(sess.history),
-                "last_query": sess.history[-1][0] if sess.history else None,
-            })
+        target_user = user_id or "default_user"
+        for (uid, sid), sess in self._sessions.items():
+            if uid == target_user:
+                summaries.append({
+                    "session_id": sid,
+                    "user_id": uid,
+                    "history_turns": len(sess.history),
+                    "last_query": sess.history[-1][0] if sess.history else None,
+                })
         return summaries
 
-    def delete_session(self, session_id: str) -> bool:
-        """Remove a session from memory."""
-        if session_id in self._sessions:
-            del self._sessions[session_id]
-            logger.info("Deleted session: %s", session_id)
+    def delete_session(self, session_id: str, user_id: str = "default_user") -> bool:
+        """Remove a session from memory for target user_id."""
+        uid = user_id or "default_user"
+        key = (uid, session_id)
+        if key in self._sessions:
+            del self._sessions[key]
+            logger.info("Deleted session: %s for user: %s", session_id, uid)
             return True
         return False
 
     def clear_all(self) -> None:
         """Clear all active sessions."""
         self._sessions.clear()
+
 
 
 session_manager = SessionManager()
@@ -111,6 +121,29 @@ class UserProfile(BaseModel):
     created_at: Optional[str] = ""
     role: str = "user"
     is_admin: bool = False
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_api_key: Optional[str] = None
+    llm_base_url: Optional[str] = None
+
+
+class UserModelConfigRequest(BaseModel):
+    user_id: str = Field(..., description="User ID")
+    llm_provider: str = Field(..., description="LLM provider name")
+    llm_model: str = Field(..., description="Target LLM model name")
+    llm_api_key: Optional[str] = Field(default="", description="BYOK API key")
+    llm_base_url: Optional[str] = Field(default="", description="Base URL for local Ollama / OpenRouter")
+
+
+class TestModelConnectionRequest(BaseModel):
+    llm_provider: Optional[str] = Field(default=None, description="LLM provider name")
+    provider: Optional[str] = Field(default=None, description="Alternative key for provider")
+    llm_model: Optional[str] = Field(default=None, description="Target LLM model name")
+    model: Optional[str] = Field(default=None, description="Alternative key for model")
+    llm_api_key: Optional[str] = Field(default="", description="BYOK API key")
+    api_key: Optional[str] = Field(default="", description="Alternative key for API key")
+    llm_base_url: Optional[str] = Field(default="", description="Base URL")
+    base_url: Optional[str] = Field(default="", description="Alternative key for Base URL")
 
 
 class AuthResponse(BaseModel):
@@ -126,6 +159,10 @@ class QueryRequest(BaseModel):
     question: Optional[str] = Field(default=None, description="Alternative key for question.")
     session_id: str = Field(default="default", description="Unique conversation session identifier.")
     user_id: str = Field(default="default_user", description="Logged-in user identifier.")
+    llm_provider: Optional[str] = Field(default=None, description="BYOK provider name")
+    llm_model: Optional[str] = Field(default=None, description="Target LLM model name")
+    llm_api_key: Optional[str] = Field(default=None, description="BYOK API key")
+    llm_base_url: Optional[str] = Field(default=None, description="Base URL for local Ollama / OpenRouter")
 
     @model_validator(mode="before")
     @classmethod
@@ -266,11 +303,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Enable GZip compression for large responses (>1KB)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    """Add X-Process-Time-Ms header to every HTTP response for latency monitoring."""
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    process_time_ms = (time.perf_counter() - start_time) * 1000
+    response.headers["X-Process-Time-Ms"] = f"{process_time_ms:.2f}"
+    return response
+
 
 # --------------------------------------------------------------------------- #
 # API Endpoints
 # --------------------------------------------------------------------------- #
-@app.get("/", response_model=HealthResponse, tags=["Diagnostics"])
 @app.get("/health", response_model=HealthResponse, tags=["Diagnostics"])
 async def health_check() -> HealthResponse:
     """Check API health, active configuration, vector DB status, and Supabase connection."""
@@ -286,6 +335,17 @@ async def health_check() -> HealthResponse:
         active_sessions_count=len(session_manager._sessions),
         supabase_connected=supabase_ok,
     )
+
+
+@app.get("/", tags=["Diagnostics"], summary="Root endpoint - serves UI or API status")
+async def root_endpoint(request: Request):
+    """Serve React frontend index.html for browser navigation, or HealthResponse JSON for API clients."""
+    accept = request.headers.get("accept", "")
+    frontend_dist_path = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+    index_file = os.path.join(frontend_dist_path, "index.html")
+    if "text/html" in accept and os.path.exists(index_file):
+        return FileResponse(index_file)
+    return await health_check()
 
 
 
@@ -363,8 +423,64 @@ async def get_user_account_usage(user_id: str = APIPath(..., description="Target
     return await get_user_account_usage_from_supabase(user_id)
 
 
-from fastapi.responses import StreamingResponse
+@app.post(
+    "/api/v1/auth/user-model-config",
+    response_model=SimpleStatusResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["User Authentication"],
+    summary="Save user BYOK AI model configuration",
+)
+async def update_user_model_config(payload: UserModelConfigRequest) -> SimpleStatusResponse:
+    """Save user BYOK model provider, model name, API key, and base URL in Supabase PostgreSQL."""
+    from backend.db.supabase_client import update_user_model_config_in_supabase
+    res = await update_user_model_config_in_supabase(
+        user_id=payload.user_id,
+        llm_provider=payload.llm_provider,
+        llm_model=payload.llm_model,
+        llm_api_key=payload.llm_api_key or "",
+        llm_base_url=payload.llm_base_url or "",
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=res.get("error", "Failed to save configuration."))
+    return SimpleStatusResponse(status="success", message=res.get("message", "Model configuration saved successfully."))
 
+
+@app.post(
+    "/api/v1/auth/test-model-connection",
+    response_model=SimpleStatusResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["User Authentication"],
+    summary="Test BYOK model API key and connection",
+)
+async def test_model_connection(payload: TestModelConnectionRequest) -> SimpleStatusResponse:
+    """Instantiate target LLM model and verify connection with a test prompt."""
+    from src.agent.llm_factory import create_llm_model
+    provider = payload.llm_provider or payload.provider or "google"
+    model = payload.llm_model or payload.model or CONFIG.llm_model or "gemini-3.5-flash"
+    api_key = payload.llm_api_key or payload.api_key or ""
+    base_url = payload.llm_base_url or payload.base_url or ""
+    try:
+        llm = create_llm_model(
+            provider=provider,
+            model_name=model,
+            api_key=api_key,
+            base_url=base_url,
+        )
+        res = llm.invoke("Hi")
+        actual_model = getattr(llm, "model", model)
+        return SimpleStatusResponse(
+            status="success",
+            message=f"Successfully connected to {provider.upper()} ({actual_model})!",
+        )
+    except Exception as exc:
+        logger.warning("Test model connection failed for provider %s model %s: %s", provider, model, exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Connection failed: {str(exc)}",
+        )
+
+
+from fastapi.responses import StreamingResponse
 
 
 @app.post(
@@ -376,7 +492,24 @@ async def process_query_stream(payload: QueryRequest):
     """
     Stream real-time model thinking, retrieval, and synthesis states as SSE events.
     """
-    session = session_manager.get_session(payload.session_id)
+    llm_provider = payload.llm_provider
+    llm_model = payload.llm_model
+    llm_api_key = payload.llm_api_key
+    llm_base_url = payload.llm_base_url
+
+    if not llm_provider and payload.user_id and payload.user_id != "default_user":
+        try:
+            from backend.db.supabase_client import get_user_model_config_from_supabase
+            user_config = await get_user_model_config_from_supabase(payload.user_id)
+            if user_config and user_config.get("llm_provider"):
+                llm_provider = user_config.get("llm_provider")
+                llm_model = user_config.get("llm_model")
+                llm_api_key = user_config.get("llm_api_key")
+                llm_base_url = user_config.get("llm_base_url")
+        except Exception:
+            pass
+
+    session = session_manager.get_session(payload.session_id, payload.user_id)
 
     async def event_generator():
         try:
@@ -384,6 +517,10 @@ async def process_query_stream(payload: QueryRequest):
                 user_query=payload.query,
                 session_id=payload.session_id,
                 user_id=payload.user_id,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+                llm_api_key=llm_api_key,
+                llm_base_url=llm_base_url,
             ):
                 yield f"data: {json.dumps(chunk)}\n\n"
         except Exception as exc:
@@ -409,8 +546,33 @@ async def process_query(payload: QueryRequest) -> QueryResponse:
     - Falls back to LangGraph RAG workflow with BM25 + dense retrieval.
     """
     try:
-        session = session_manager.get_session(payload.session_id)
-        state = session.run_turn(payload.query, session_id=payload.session_id, user_id=payload.user_id)
+        llm_provider = payload.llm_provider
+        llm_model = payload.llm_model
+        llm_api_key = payload.llm_api_key
+        llm_base_url = payload.llm_base_url
+
+        if not llm_provider and payload.user_id and payload.user_id != "default_user":
+            try:
+                from backend.db.supabase_client import get_user_model_config_from_supabase
+                user_config = await get_user_model_config_from_supabase(payload.user_id)
+                if user_config and user_config.get("llm_provider"):
+                    llm_provider = user_config.get("llm_provider")
+                    llm_model = user_config.get("llm_model")
+                    llm_api_key = user_config.get("llm_api_key")
+                    llm_base_url = user_config.get("llm_base_url")
+            except Exception:
+                pass
+
+        session = session_manager.get_session(payload.session_id, payload.user_id)
+        state = session.run_turn(
+            payload.query,
+            session_id=payload.session_id,
+            user_id=payload.user_id,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            llm_api_key=llm_api_key,
+            llm_base_url=llm_base_url,
+        )
         payload_dict = session.to_json(state)
 
 
@@ -550,17 +712,25 @@ async def process_voice_query(
     summary="List active conversation sessions for a user",
 )
 async def list_active_sessions(user_id: str = "default_user") -> SessionInfoResponse:
-    """Retrieve metadata for conversation sessions from Supabase PostgreSQL for a specific user_id."""
+    """Retrieve metadata for conversation sessions, combining in-memory active states with Supabase PostgreSQL."""
+    sessions_dict: Dict[str, Dict] = {}
+
+    # 1. Load active in-memory sessions
+    for s in session_manager.list_sessions(user_id=user_id):
+        sessions_dict[s["session_id"]] = s
+
+    # 2. Merge with Supabase PostgreSQL records if available
     try:
         from backend.db.supabase_client import list_user_sessions_from_supabase
         db_sessions = await list_user_sessions_from_supabase(user_id)
         if db_sessions:
-            return SessionInfoResponse(sessions=db_sessions, total_active=len(db_sessions))
+            for s in db_sessions:
+                sessions_dict[s["session_id"]] = s
     except Exception as exc:
         logger.warning("Error fetching sessions from Supabase: %s", exc)
 
-    mem_sessions = session_manager.list_sessions()
-    return SessionInfoResponse(sessions=mem_sessions, total_active=len(mem_sessions))
+    combined = list(sessions_dict.values())
+    return SessionInfoResponse(sessions=combined, total_active=len(combined))
 
 
 @app.get(
@@ -568,11 +738,14 @@ async def list_active_sessions(user_id: str = "default_user") -> SessionInfoResp
     tags=["Session Management"],
     summary="Get conversation history for a session",
 )
-async def get_session_history(session_id: str = APIPath(..., description="Target session ID")):
+async def get_session_history(
+    session_id: str = APIPath(..., description="Target session ID"),
+    user_id: str = "default_user",
+):
     """Retrieve full conversation turn history for a session from Supabase or in-memory cache."""
     try:
         from backend.db.supabase_client import get_session_from_supabase
-        db_sess = await get_session_from_supabase(session_id)
+        db_sess = await get_session_from_supabase(session_id, user_id=user_id)
         if db_sess and "history" in db_sess:
             history = db_sess["history"]
             if isinstance(history, str):
@@ -581,7 +754,7 @@ async def get_session_history(session_id: str = APIPath(..., description="Target
     except Exception as exc:
         logger.warning("Error fetching session '%s' from Supabase: %s", session_id, exc)
 
-    mem_sess = session_manager.get_session(session_id)
+    mem_sess = session_manager.get_session(session_id, user_id=user_id)
     raw_history = list(mem_sess.history)
     history_json = [{"user": u, "assistant": a} for u, a in raw_history]
     return {"session_id": session_id, "history": history_json}
@@ -595,13 +768,16 @@ async def get_session_history(session_id: str = APIPath(..., description="Target
     tags=["Session Management"],
     summary="Reset or delete a session",
 )
-async def delete_session(session_id: str = APIPath(..., description="Target session ID")) -> SimpleStatusResponse:
+async def delete_session(
+    session_id: str = APIPath(..., description="Target session ID"),
+    user_id: str = "default_user",
+) -> SimpleStatusResponse:
     """Clear conversation history and session memory for a given session_id from memory and Supabase."""
-    deleted_mem = session_manager.delete_session(session_id)
+    deleted_mem = session_manager.delete_session(session_id, user_id=user_id)
     deleted_db = False
     try:
         from backend.db.supabase_client import delete_session_from_supabase
-        deleted_db = await delete_session_from_supabase(session_id)
+        deleted_db = await delete_session_from_supabase(session_id, user_id=user_id)
     except Exception as exc:
         logger.warning("Error deleting session '%s' from Supabase: %s", session_id, exc)
 
@@ -718,4 +894,7 @@ from fastapi.staticfiles import StaticFiles
 frontend_dist_path = os.path.join(os.path.dirname(__file__), "frontend", "dist")
 if os.path.exists(frontend_dist_path):
     logger.info("Mounting production frontend build from: %s", frontend_dist_path)
+    assets_path = os.path.join(frontend_dist_path, "assets")
+    if os.path.exists(assets_path):
+        app.mount("/assets", StaticFiles(directory=assets_path), name="static_assets")
     app.mount("/", StaticFiles(directory=frontend_dist_path, html=True), name="static_frontend")

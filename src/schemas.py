@@ -158,7 +158,7 @@ class APIErrorPayload(BaseModel):
 # --------------------------------------------------------------------------- #
 # Agent State Schema (LangGraph Workflow State)
 # --------------------------------------------------------------------------- #
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     query: str
     standalone_query: str
     chat_history: List[Tuple[str, str]]
@@ -169,6 +169,10 @@ class AgentState(TypedDict):
     cache_key: str
     cache_hit: Optional[bool]
     token_usage: Optional[dict]
+    llm_provider: Optional[str]
+    llm_model: Optional[str]
+    llm_api_key: Optional[str]
+    llm_base_url: Optional[str]
 
 
 # --------------------------------------------------------------------------- #

@@ -16,6 +16,7 @@ interface SessionSidebarProps {
   onOpenProfileModal?: () => void;
   onLogout: () => void;
   isOpen?: boolean;
+  theme?: 'light' | 'dark';
 }
 
 const BIS_SAMPLE_PROMPTS = [
@@ -38,13 +39,16 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   onOpenProfileModal,
   onLogout,
   isOpen = true,
+  theme = 'light',
 }) => {
+  const isDark = theme === 'dark';
 
 
   if (!isOpen) return null;
 
   return (
     <aside
+      className="mobile-sidebar-drawer"
       style={{
         width: '270px',
         background: 'var(--gemini-bg-sidebar)',
@@ -54,7 +58,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
         height: '100%',
         padding: '16px 12px',
         gap: '16px',
-        zIndex: 20,
+        zIndex: 1000,
       }}
     >
       {/* Gemini "+ New chat" Pill Button */}
@@ -64,19 +68,20 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
           width: '100%',
           padding: '12px 18px',
           borderRadius: '24px',
-          background: 'rgba(255, 255, 255, 0.06)',
-          border: '1px solid var(--glass-border)',
-          color: 'var(--text-main)',
+          background: isDark ? '#282A2C' : '#FFFFFF',
+          border: isDark ? '1px solid rgba(255, 255, 255, 0.15)' : '1px solid var(--glass-border)',
+          color: isDark ? '#FFFFFF' : 'var(--text-main)',
           fontSize: '0.9rem',
-          fontWeight: 500,
+          fontWeight: 600,
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
           cursor: 'pointer',
+          boxShadow: isDark ? '0 2px 8px rgba(0, 0, 0, 0.3)' : '0 1px 3px rgba(0, 0, 0, 0.05)',
           transition: 'all 0.2s ease',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--gemini-bg-card-hover)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
+        onMouseEnter={(e) => (e.currentTarget.style.background = isDark ? '#333537' : '#F1F5F9')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = isDark ? '#282A2C' : '#FFFFFF')}
       >
         <Plus size={18} color="var(--gemini-blue)" />
         New chat
@@ -102,8 +107,9 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
                 style={{
                   padding: '10px 12px',
                   borderRadius: '20px',
-                  background: isActive ? 'rgba(66, 133, 244, 0.15)' : 'transparent',
-                  color: isActive ? '#FFFFFF' : 'var(--text-subtle)',
+                  background: isActive ? (isDark ? 'rgba(37, 99, 235, 0.22)' : 'rgba(37, 99, 235, 0.08)') : 'transparent',
+                  color: isActive ? (isDark ? '#93C5FD' : '#1D4ED8') : 'var(--text-subtle)',
+                  fontWeight: isActive ? 600 : 400,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -112,14 +118,14 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
                   transition: 'all 0.15s ease',
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                  if (!isActive) e.currentTarget.style.background = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)';
                 }}
                 onMouseLeave={(e) => {
                   if (!isActive) e.currentTarget.style.background = 'transparent';
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
-                  <MessageSquare size={15} color={isActive ? '#4285F4' : 'var(--text-muted)'} />
+                  <MessageSquare size={15} color={isActive ? (isDark ? '#93C5FD' : '#1D4ED8') : 'var(--text-muted)'} />
                   <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px' }}>
                     {sess.last_query || sess.session_id}
                   </span>
@@ -154,19 +160,25 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
             style={{
               padding: '8px 12px',
               borderRadius: '12px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: 'none',
-              color: 'var(--text-subtle)',
+              background: isDark ? '#282A2C' : '#F1F5F9',
+              border: '1px solid transparent',
+              color: isDark ? '#CBD5E1' : 'var(--text-subtle)',
               fontSize: '0.8rem',
               textAlign: 'left',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              transition: 'background 0.2s ease',
+              transition: 'all 0.2s ease',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--gemini-bg-card-hover)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = isDark ? '#333537' : '#E2E8F0';
+              e.currentTarget.style.color = isDark ? '#FFFFFF' : 'var(--text-main)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = isDark ? '#282A2C' : '#F1F5F9';
+              e.currentTarget.style.color = isDark ? '#CBD5E1' : 'var(--text-subtle)';
+            }}
           >
             💡 {p.label}
           </button>
@@ -180,11 +192,11 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
           width: '100%',
           padding: '8px 12px',
           borderRadius: '20px',
-          background: 'rgba(239, 68, 68, 0.1)',
+          background: isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.08)',
           border: '1px solid rgba(239, 68, 68, 0.25)',
-          color: '#EF4444',
+          color: isDark ? '#FCA5A5' : '#DC2626',
           fontSize: '0.78rem',
-          fontWeight: 500,
+          fontWeight: 600,
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -221,7 +233,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
             {currentUser ? currentUser.full_name.charAt(0).toUpperCase() : <Sparkles size={18} color="#FFFFFF" />}
           </div>
           <div style={{ overflow: 'hidden' }}>
-            <div style={{ fontSize: '0.86rem', fontWeight: 600, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: '0.86rem', fontWeight: 600, color: isDark ? '#FFFFFF' : '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {currentUser ? currentUser.full_name : 'Guest User'}
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

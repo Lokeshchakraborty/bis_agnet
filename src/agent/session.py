@@ -6,10 +6,10 @@ from __future__ import annotations
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, Dict, Tuple
+from typing import Deque, Dict, Tuple,Optional
 
 from src.agent.graph import build_graph
-from src.agent.nodes import _fast_classify
+from src.agent.nodes import _fast_classify, _format_history
 from src.config import CONFIG
 from src.schemas import DOMAIN_COLLECTIONS, AgentState, BISResponse, Intent, TokenTracker
 from src.tools.cache import ResponseCache
@@ -49,7 +49,16 @@ class Session:
             response_cache=self.response_cache,
         )
 
-    def run_turn(self, user_query: str, session_id: str = "default", user_id: str = "default_user") -> dict:
+    def run_turn(
+        self,
+        user_query: str,
+        session_id: str = "default",
+        user_id: str = "default_user",
+        llm_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        llm_api_key: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
+    ) -> dict:
         """Run a single conversation turn with front-loaded cache bypass, rate limiting, and Supabase sync."""
         import time
         start_t = time.perf_counter()
@@ -131,6 +140,10 @@ class Session:
                         "response_time_ms": elapsed_ms,
                         "response_time_seconds": elapsed_sec,
                         "token_usage": tu,
+                        "llm_provider": llm_provider,
+                        "llm_model": llm_model,
+                        "llm_api_key": llm_api_key,
+                        "llm_base_url": llm_base_url,
                     }
                     get_audit_logger().log_interaction(
                         session_id=session_id,
@@ -158,6 +171,10 @@ class Session:
             "cache_key": "",
             "cache_hit": None,
             "token_usage": None,
+            "llm_provider": llm_provider,
+            "llm_model": llm_model,
+            "llm_api_key": llm_api_key,
+            "llm_base_url": llm_base_url,
         }
         state = self.app.invoke(inputs)
         output: BISResponse = state["final_output"]
@@ -196,7 +213,16 @@ class Session:
         _sync_to_supabase()
         return state
 
-    async def run_turn_stream(self, user_query: str, session_id: str = "default", user_id: str = "default_user"):
+    async def run_turn_stream(
+        self,
+        user_query: str,
+        session_id: str = "default",
+        user_id: str = "default_user",
+        llm_provider: Optional[str] = None,
+        llm_model: Optional[str] = None,
+        llm_api_key: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
+    ):
         """Stream real-time state updates directly from Python backend execution steps to client."""
         import asyncio
         import time
@@ -250,6 +276,10 @@ class Session:
                         "response_time_ms": elapsed_ms,
                         "response_time_seconds": elapsed_sec,
                         "token_usage": tu,
+                        "llm_provider": llm_provider,
+                        "llm_model": llm_model,
+                        "llm_api_key": llm_api_key,
+                        "llm_base_url": llm_base_url,
                     }
                     get_audit_logger().log_interaction(
                         session_id=session_id,
@@ -273,20 +303,11 @@ class Session:
                     yield {"type": "result", "payload": self.to_json(res_state)}
                     return
 
-        # 2. Dense Vector & BM25 Search
-        yield {"type": "status", "message": "Performing BM25 & dense vector retrieval..."}
-        await asyncio.sleep(0.1)
-
-        # 3. Supabase Database Query
-        yield {"type": "status", "message": "Querying Supabase PostgreSQL knowledge base..."}
-        await asyncio.sleep(0.1)
-
-        # 4. LLM Generation & Synthesis
-        yield {"type": "status", "message": "Synthesizing compliance report with IS standards..."}
-
+        # 2. Contextualize Query
+        yield {"type": "status", "message": "Contextualizing query with active session..."}
         inputs: AgentState = {
-            "query": effective_query,
-            "standalone_query": "",
+            "query": user_query,
+            "standalone_query": effective_query,
             "chat_history": list(self.history),
             "intent": "",
             "domain": "",
@@ -295,23 +316,91 @@ class Session:
             "cache_key": "",
             "cache_hit": None,
             "token_usage": None,
+            "llm_provider": llm_provider,
+            "llm_model": llm_model,
+            "llm_api_key": llm_api_key,
+            "llm_base_url": llm_base_url,
         }
-        state = await asyncio.to_thread(self.app.invoke, inputs)
-        output: BISResponse = state["final_output"]
+        state = dict(inputs)
+        state.update(self.nodes.contextualize_query(state))
+
+        # 3. Intent Classification
+        yield {"type": "status", "message": "Classifying compliance intent & IS categories..."}
+        intent_res = self.nodes.intent_classifier(state)
+        state.update(intent_res)
+
+        # 4. Dense & BM25 Knowledge Retrieval
+        intent_val = state.get("intent", "general")
+        yield {"type": "status", "message": f"Retrieving Indian Standards & clauses for {intent_val}..."}
+        if intent_val == Intent.CATALOG_SEARCH.value:
+            ret_res = self.nodes.retrieve_catalog(state)
+        elif intent_val in [d.value for d in DOMAIN_COLLECTIONS]:
+            domain_obj = [d for d in DOMAIN_COLLECTIONS if d.value == intent_val][0]
+            ret_fn = self.nodes.retrieve_domain(domain_obj)
+            ret_res = ret_fn(state)
+        else:
+            ret_res = {"retrieved_context": "", "domain": "chat"}
+        state.update(ret_res)
+
+        # 5. LLM Synthesis with Real-Time Token Streaming
+        yield {"type": "status", "message": "Synthesizing compliance report with IS standards..."}
+        is_chat = state["intent"] == Intent.CHAT.value
+        final_output = None
+        for evt in self.nodes.stream_synthesize(
+            chat_history=_format_history(state["chat_history"]),
+            context=state.get("retrieved_context", ""),
+            query=state["standalone_query"],
+            is_chat=is_chat,
+            state=state,
+        ):
+            if evt["type"] == "token":
+                yield evt
+            elif evt["type"] == "final_output":
+                final_output = evt["output"]
+
+        if final_output is None:
+            final_output = BISResponse(
+                core_response="I encountered an issue synthesizing the response. Please try again.",
+                follow_up_prompt="Would you like to rephrase your query?",
+            )
+
+        # 6. Apply Guardrails & Sanitize
+        try:
+            from src.agent.guardrails import validate_and_sanitize_response
+            raw_conf = 0.95 if is_chat or len(state.get("retrieved_context", "")) > 50 else 0.65
+            final_output = validate_and_sanitize_response(final_output, state["query"], intent_confidence=raw_conf)
+        except Exception as exc:
+            logger.warning("Guardrails warning during stream: %s", exc)
+
+        state["final_output"] = final_output
         elapsed_ms = round((time.perf_counter() - start_t) * 1000, 2)
         elapsed_sec = round(time.perf_counter() - start_t, 3)
         state["response_time_ms"] = elapsed_ms
         state["response_time_seconds"] = elapsed_sec
-        if state.get("token_usage"):
-            state["token_usage"]["response_time_ms"] = elapsed_ms
-            state["token_usage"]["response_time_seconds"] = elapsed_sec
+        tu = self.token_tracker.get_turn_summary(cache_hit=False)
+        tu["response_time_ms"] = elapsed_ms
+        tu["response_time_seconds"] = elapsed_sec
+        state["token_usage"] = tu
 
-        if output.applicable_standards:
-            self.active_product_context = output.applicable_standards[0]
+        # 7. Store in Cache if appropriate
+        if CONFIG.cache_enabled and not is_chat and final_output:
+            try:
+                payload = {"intent": state["intent"], "domain": state.get("domain", ""), **final_output.model_dump()}
+                key_standalone = self.response_cache.make_key(state["intent"], state["standalone_query"])
+                self.response_cache.set(key_standalone, payload)
+                raw_q = state.get("query", "").strip()
+                if raw_q and len(raw_q.split()) >= 3:
+                    key_raw = self.response_cache.make_key(state["intent"], raw_q)
+                    self.response_cache.set(key_raw, payload)
+            except Exception:
+                pass
 
-        agent_stored = output.core_response
-        if output.follow_up_prompt:
-            agent_stored += f"\n\n[I asked as follow-up]: {output.follow_up_prompt}"
+        if final_output.applicable_standards:
+            self.active_product_context = final_output.applicable_standards[0]
+
+        agent_stored = final_output.core_response
+        if final_output.follow_up_prompt:
+            agent_stored += f"\n\n[I asked as follow-up]: {final_output.follow_up_prompt}"
         self.history.append((user_query, agent_stored))
 
         get_audit_logger().log_interaction(
@@ -319,16 +408,14 @@ class Session:
             user_query=user_query,
             standalone_query=state.get("standalone_query", effective_query),
             intent=state.get("intent", ""),
-            intent_localized=output.intent_localized,
+            intent_localized=final_output.intent_localized,
             payload_dict=self.to_json(state),
             token_usage=state.get("token_usage"),
             response_time_ms=elapsed_ms,
             user_id=user_id,
         )
 
-
         from backend.db.supabase_client import save_session_to_supabase, record_token_burn_for_user_in_supabase
-        tu = state.get("token_usage") or {}
         burned = (tu.get("turn_prompt_tokens", 0) + tu.get("turn_completion_tokens", 0)) or tu.get("total_tokens", 0) or tu.get("session_total_llm_tokens", 0)
         if burned > 0 and user_id and user_id != "default_user":
             await record_token_burn_for_user_in_supabase(user_id, burned)

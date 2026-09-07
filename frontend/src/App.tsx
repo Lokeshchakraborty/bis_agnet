@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { getApiUrl } from './config';
 import { Header } from './components/Header';
 import { SessionSidebar } from './components/SessionSidebar';
@@ -18,7 +18,17 @@ export const App: React.FC = () => {
   // User Auth State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
     const saved = localStorage.getItem('bis_user');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      const u = JSON.parse(saved);
+      if (u && (!u.llm_model || u.llm_model.startsWith('gemini-2.5') || u.llm_model.startsWith('gemini-2.0') || u.llm_model.startsWith('gemini-1.5') || u.llm_model.startsWith('gemini-1.0'))) {
+        u.llm_model = 'gemini-3.5-flash';
+        localStorage.setItem('bis_user', JSON.stringify(u));
+      }
+      return u;
+    } catch {
+      return null;
+    }
   });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
@@ -26,12 +36,31 @@ export const App: React.FC = () => {
   const [profileModalTab, setProfileModalTab] = useState<'details' | 'model' | 'usage'>('usage');
   const [isAuditLedgerOpen, setIsAuditLedgerOpen] = useState(false);
 
+  // Chatbot Workspace Theme State (Dark / Light)
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('bis_chatbot_theme');
+    return saved === 'dark' ? 'dark' : 'light';
+  });
+
+  const handleToggleTheme = () => {
+    setTheme((prev) => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      localStorage.setItem('bis_chatbot_theme', next);
+      return next;
+    });
+  };
+
+  const handleSelectTheme = (newTheme: 'light' | 'dark') => {
+    setTheme(newTheme);
+    localStorage.setItem('bis_chatbot_theme', newTheme);
+  };
+
   const handleOpenProfileModal = (tab: 'details' | 'model' | 'usage' = 'usage') => {
     setProfileModalTab(tab);
     setIsProfileModalOpen(true);
   };
 
-  const [activeSessionId, setActiveSessionId] = useState<string>('default');
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => `session-${Math.floor(1000 + Math.random() * 9000)}`);
   const [sessions, setSessions] = useState<{ session_id: string; history_turns: number; last_query?: string }[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [lastResponse, setLastResponse] = useState<QueryResponse | null>(null);
@@ -43,7 +72,7 @@ export const App: React.FC = () => {
 
 
   // Fetch API Health & Active Sessions
-  const fetchHealth = async () => {
+  const fetchHealth = useCallback(async () => {
     try {
       const res = await fetch(getApiUrl('/health'));
       if (res.ok) {
@@ -53,10 +82,9 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Health fetch error:', err);
     }
-  };
+  }, []);
 
-
-  const fetchSessions = async (targetUserId?: string) => {
+  const fetchSessions = useCallback(async (targetUserId?: string) => {
     const userId = targetUserId || currentUser?.user_id || 'default_user';
     try {
       const res = await fetch(getApiUrl(`/api/v1/sessions?user_id=${encodeURIComponent(userId)}`));
@@ -67,16 +95,24 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Fetch sessions error:', err);
     }
-  };
+  }, [currentUser?.user_id]);
 
   useEffect(() => {
     fetchHealth();
-    fetchSessions();
-  }, [currentUser]);
+    const userId = currentUser?.user_id || 'default_user';
+    setMessages([]);
+    setLastResponse(null);
+    setActiveSessionId(`session-${Math.floor(1000 + Math.random() * 9000)}`);
+    fetchSessions(userId);
+  }, [currentUser?.user_id, fetchHealth, fetchSessions]);
 
   const handleAuthSuccess = (user: UserProfile) => {
     setCurrentUser(user);
     localStorage.setItem('bis_user', JSON.stringify(user));
+    setMessages([]);
+    setLastResponse(null);
+    const newId = `session-${Math.floor(1000 + Math.random() * 9000)}`;
+    setActiveSessionId(newId);
     fetchSessions(user.user_id);
   };
 
@@ -85,6 +121,8 @@ export const App: React.FC = () => {
     localStorage.removeItem('bis_user');
     setMessages([]);
     setLastResponse(null);
+    const newId = `session-${Math.floor(1000 + Math.random() * 9000)}`;
+    setActiveSessionId(newId);
     fetchSessions('default_user');
   };
 
@@ -125,6 +163,7 @@ export const App: React.FC = () => {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      const streamingMsgId = (Date.now() + 1).toString();
 
       while (true) {
         const { done, value } = await reader.read();
@@ -142,17 +181,48 @@ export const App: React.FC = () => {
               const data = JSON.parse(jsonStr);
               if (data.type === 'status') {
                 setCurrentBackendStatus(data.message);
+              } else if (data.type === 'token' && data.token) {
+                setCurrentBackendStatus('');
+                setMessages((prev) => {
+                  const last = prev[prev.length - 1];
+                  if (last && last.sender === 'assistant' && last.id === streamingMsgId) {
+                    return [
+                      ...prev.slice(0, -1),
+                      { ...last, text: last.text + data.token, isStreaming: true },
+                    ];
+                  } else {
+                    const newStreamingMsg: ChatMessage = {
+                      id: streamingMsgId,
+                      sender: 'assistant',
+                      text: data.token,
+                      query: queryText,
+                      timestamp: new Date().toLocaleTimeString(),
+                      isStreaming: true,
+                    };
+                    return [...prev, newStreamingMsg];
+                  }
+                });
               } else if (data.type === 'result' && data.payload) {
                 const resData: QueryResponse = data.payload;
                 setLastResponse(resData);
-                const assistantMsg: ChatMessage = {
-                  id: (Date.now() + 1).toString(),
-                  sender: 'assistant',
-                  text: resData.core_response,
-                  response: resData,
-                  timestamp: new Date().toLocaleTimeString(),
-                };
-                setMessages((prev) => [...prev, assistantMsg]);
+                setMessages((prev) => {
+                  const existingIdx = prev.findIndex((m) => m.id === streamingMsgId);
+                  const finalizedMsg: ChatMessage = {
+                    id: streamingMsgId,
+                    sender: 'assistant',
+                    text: resData.core_response,
+                    query: queryText,
+                    response: resData,
+                    timestamp: new Date().toLocaleTimeString(),
+                    isStreaming: false,
+                  };
+                  if (existingIdx !== -1) {
+                    const copy = [...prev];
+                    copy[existingIdx] = finalizedMsg;
+                    return copy;
+                  }
+                  return [...prev, finalizedMsg];
+                });
                 fetchSessions();
               } else if (data.type === 'error') {
                 throw new Error(data.message || 'Stream processing error');
@@ -203,11 +273,15 @@ export const App: React.FC = () => {
   };
 
   const handleSelectSession = async (sessionId: string) => {
+    if (window.innerWidth <= 768) {
+      setIsSidebarOpen(false);
+    }
     setActiveSessionId(sessionId);
     setMessages([]);
     setLastResponse(null);
+    const userId = currentUser?.user_id || 'default_user';
     try {
-      const res = await fetch(getApiUrl(`/api/v1/sessions/${encodeURIComponent(sessionId)}`));
+      const res = await fetch(getApiUrl(`/api/v1/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(userId)}`));
       if (res.ok) {
         const data = await res.json();
         if (data.history && Array.isArray(data.history)) {
@@ -239,6 +313,9 @@ export const App: React.FC = () => {
   };
 
   const handleNewSession = () => {
+    if (window.innerWidth <= 768) {
+      setIsSidebarOpen(false);
+    }
     const newId = `session-${Math.floor(1000 + Math.random() * 9000)}`;
     setActiveSessionId(newId);
     setMessages([]);
@@ -248,6 +325,7 @@ export const App: React.FC = () => {
   const handleClearSession = async (sessionIdToClear: string) => {
     // Optimistically filter out deleted session
     setSessions((prev) => prev.filter((s) => s.session_id !== sessionIdToClear));
+    const userId = currentUser?.user_id || 'default_user';
 
     if (sessionIdToClear === activeSessionId) {
       const newId = `session-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -257,7 +335,7 @@ export const App: React.FC = () => {
     }
 
     try {
-      await fetch(getApiUrl(`/api/v1/sessions/${encodeURIComponent(sessionIdToClear)}`), { method: 'DELETE' });
+      await fetch(getApiUrl(`/api/v1/sessions/${encodeURIComponent(sessionIdToClear)}?user_id=${encodeURIComponent(userId)}`), { method: 'DELETE' });
       await fetchSessions();
     } catch (err) {
       console.error('Clear session error:', err);
@@ -269,6 +347,7 @@ export const App: React.FC = () => {
       await fetch(getApiUrl('/api/v1/cache/clear'), { method: 'POST' });
       alert('Persistent Response Cache purged successfully!');
     } catch (err) {
+      console.error('Failed to clear cache:', err);
       alert('Failed to clear cache.');
     }
   };
@@ -299,11 +378,13 @@ export const App: React.FC = () => {
 
   // Authenticated Users Access the Full Gemini Chat Workspace
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div className={`app-workspace ${theme === 'dark' ? 'workspace-dark' : 'workspace-light'}`} style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {/* Header Bar */}
       <Header
         health={health}
         currentUser={currentUser}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
         onToggleTelemetry={() => setIsTelemetryOpen((prev) => !prev)}
         onOpenAuditLedger={() => setIsAuditLedgerOpen(true)}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
@@ -314,19 +395,28 @@ export const App: React.FC = () => {
 
 
       {/* Main App Workspace */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
+        {/* Mobile Backdrop for Sidebar Drawer */}
+        {isSidebarOpen && window.innerWidth <= 768 && (
+          <div className="drawer-backdrop" onClick={() => setIsSidebarOpen(false)} />
+        )}
+
         {/* Sidebar */}
         <SessionSidebar
           sessions={sessions}
           activeSessionId={activeSessionId}
           currentUser={currentUser}
+          theme={theme}
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}
           onClearSession={handleClearSession}
           onClearCache={handleClearCache}
-          onSelectPrompt={(prompt) => handleSendMessage(prompt)}
+          onSelectPrompt={(prompt) => {
+            if (window.innerWidth <= 768) setIsSidebarOpen(false);
+            handleSendMessage(prompt);
+          }}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
-          onOpenProfileModal={() => handleOpenProfileModal('usage')}
+          onOpenProfileModal={() => handleOpenProfileModal('details')}
           onLogout={handleLogout}
           isOpen={isSidebarOpen}
         />
@@ -341,14 +431,20 @@ export const App: React.FC = () => {
           backendStatus={currentBackendStatus}
           currentUser={currentUser}
           sessionId={activeSessionId}
+          theme={theme}
         />
 
+        {/* Mobile Backdrop for Telemetry Drawer */}
+        {isTelemetryOpen && window.innerWidth <= 1024 && (
+          <div className="drawer-backdrop" onClick={() => setIsTelemetryOpen(false)} />
+        )}
 
         {/* Telemetry Drawer */}
         <TelemetryPanel
           isOpen={isTelemetryOpen}
           onClose={() => setIsTelemetryOpen(false)}
           lastResponse={lastResponse}
+          theme={theme}
         />
       </div>
 
@@ -359,6 +455,8 @@ export const App: React.FC = () => {
         currentUser={currentUser}
         lastResponse={lastResponse}
         initialTab={profileModalTab}
+        theme={theme}
+        onSelectTheme={handleSelectTheme}
         onUpdateUser={(updated) => setCurrentUser(updated)}
       />
 
@@ -374,11 +472,13 @@ export const App: React.FC = () => {
         onClose={() => setIsVoiceModalOpen(false)}
         sessionId={activeSessionId}
         onVoiceSuccess={handleVoiceSuccess}
+        theme={theme}
       />
 
       <AuditLedgerModal
         isOpen={isAuditLedgerOpen}
         onClose={() => setIsAuditLedgerOpen(false)}
+        theme={theme}
       />
     </div>
   );

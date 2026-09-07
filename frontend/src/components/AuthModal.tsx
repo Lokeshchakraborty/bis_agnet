@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Lock, Mail, User, Sparkles, Loader2, LogIn, UserPlus } from 'lucide-react';
+import { X, Lock, Mail, User, Loader2, LogIn, UserPlus } from 'lucide-react';
 import type { UserProfile, AuthResponse } from '../types';
 import { getApiUrl } from '../config';
 
@@ -59,8 +59,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(19, 19, 20, 0.85)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px' }}>
-      <div style={{ background: 'var(--gemini-bg-card)', border: '1px solid var(--glass-border)', borderRadius: '24px', width: '420px', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}>
+      <div className="animate-fade-in modal-responsive-card" style={{ background: '#FFFFFF', border: '1px solid var(--glass-border)', borderRadius: '24px', width: '420px', maxWidth: '95vw', padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', boxShadow: '0 20px 45px -10px rgba(0, 0, 0, 0.15)' }}>
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -71,11 +71,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
 
         {/* Modal Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'var(--gemini-sparkle-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 16px rgba(155, 81, 224, 0.4)' }}>
-            <Sparkles size={22} color="#FFFFFF" />
-          </div>
+
           <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF' }}>BIS SATHI Account</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)' }}>BIS SATHI Account</h2>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               Sign in to sync your conversation sessions in Supabase.
             </p>
@@ -83,7 +81,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
         </div>
 
         {/* Tab Toggle */}
-        <div style={{ display: 'flex', background: 'rgba(0, 0, 0, 0.25)', borderRadius: '16px', padding: '4px', border: '1px solid var(--glass-border)' }}>
+        <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: '16px', padding: '4px', border: '1px solid var(--glass-border)' }}>
           <button
             onClick={() => { setIsLoginTab(true); setErrorMessage(''); }}
             style={{
@@ -91,8 +89,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
               padding: '10px',
               borderRadius: '12px',
               border: 'none',
-              background: isLoginTab ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-              color: isLoginTab ? '#FFFFFF' : 'var(--text-muted)',
+              background: isLoginTab ? '#FFFFFF' : 'transparent',
+              color: isLoginTab ? '#0F172A' : 'var(--text-muted)',
               fontWeight: isLoginTab ? 600 : 500,
               fontSize: '0.88rem',
               cursor: 'pointer',
@@ -100,6 +98,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
+              boxShadow: isLoginTab ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
             }}
           >
             <LogIn size={15} />
@@ -112,8 +111,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
               padding: '10px',
               borderRadius: '12px',
               border: 'none',
-              background: !isLoginTab ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-              color: !isLoginTab ? '#FFFFFF' : 'var(--text-muted)',
+              background: !isLoginTab ? '#FFFFFF' : 'transparent',
+              color: !isLoginTab ? '#0F172A' : 'var(--text-muted)',
               fontWeight: !isLoginTab ? 600 : 500,
               fontSize: '0.88rem',
               cursor: 'pointer',
@@ -121,6 +120,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
               alignItems: 'center',
               justifyContent: 'center',
               gap: '6px',
+              boxShadow: !isLoginTab ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
             }}
           >
             <UserPlus size={15} />
@@ -130,7 +130,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
 
         {/* Error Alert */}
         {errorMessage && (
-          <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#EF4444', fontSize: '0.82rem', textAlign: 'center' }}>
+          <div style={{ padding: '10px 14px', borderRadius: '12px', background: '#FEE2E2', border: '1px solid #FCA5A5', color: '#B91C1C', fontSize: '0.82rem', textAlign: 'center' }}>
             {errorMessage}
           </div>
         )}
@@ -140,7 +140,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
           {!isLoginTab && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-subtle)' }}>Full Name</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--gemini-bg-main)', border: '1px solid var(--glass-border)', borderRadius: '14px', padding: '10px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#F8FAFC', border: '1px solid var(--glass-border)', borderRadius: '14px', padding: '10px 14px' }}>
                 <User size={18} color="var(--text-muted)" />
                 <input
                   type="text"
@@ -148,7 +148,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required={!isLoginTab}
-                  style={{ background: 'none', border: 'none', outline: 'none', color: '#FFF', fontSize: '0.92rem', width: '100%' }}
+                  style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--text-main)', fontSize: '0.92rem', width: '100%' }}
                 />
               </div>
             </div>
@@ -156,7 +156,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-subtle)' }}>Email Address</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--gemini-bg-main)', border: '1px solid var(--glass-border)', borderRadius: '14px', padding: '10px 14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#F8FAFC', border: '1px solid var(--glass-border)', borderRadius: '14px', padding: '10px 14px' }}>
               <Mail size={18} color="var(--text-muted)" />
               <input
                 type="email"
@@ -164,14 +164,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                style={{ background: 'none', border: 'none', outline: 'none', color: '#FFF', fontSize: '0.92rem', width: '100%' }}
+                style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--text-main)', fontSize: '0.92rem', width: '100%' }}
               />
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-subtle)' }}>Password</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--gemini-bg-main)', border: '1px solid var(--glass-border)', borderRadius: '14px', padding: '10px 14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#F8FAFC', border: '1px solid var(--glass-border)', borderRadius: '14px', padding: '10px 14px' }}>
               <Lock size={18} color="var(--text-muted)" />
               <input
                 type="password"
@@ -179,7 +179,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                style={{ background: 'none', border: 'none', outline: 'none', color: '#FFF', fontSize: '0.92rem', width: '100%' }}
+                style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--text-main)', fontSize: '0.92rem', width: '100%' }}
               />
             </div>
           </div>
@@ -191,7 +191,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
               marginTop: '8px',
               padding: '12px',
               borderRadius: '24px',
-              background: 'var(--gemini-sparkle-gradient)',
+              background: 'var(--gemini-blue)',
               border: 'none',
               color: '#FFFFFF',
               fontWeight: 600,
@@ -201,7 +201,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuc
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              boxShadow: '0 4px 16px rgba(155, 81, 224, 0.3)',
+              boxShadow: '0 4px 16px rgba(79, 114, 230, 0.3)',
             }}
           >
             {isLoading ? <Loader2 size={18} className="gemini-pulse" /> : isLoginTab ? <LogIn size={18} /> : <UserPlus size={18} />}

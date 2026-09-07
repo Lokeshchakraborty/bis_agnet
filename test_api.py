@@ -60,7 +60,8 @@ class TestBISAgentAPI(unittest.TestCase):
 
     def test_04_session_management(self):
         # 1. Create turn to populate session
-        self.client.post("/api/v1/query", json={"query": "Hello", "session_id": "sess-abc"})
+        sess = session_manager.get_session("sess-abc")
+        sess.history.append(("Hello", "Hi there!"))
 
         # 2. List sessions
         response = self.client.get("/api/v1/sessions")

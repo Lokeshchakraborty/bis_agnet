@@ -1,0 +1,42 @@
+# Git & Version Control
+.git
+.gitignore
+.github
+
+# Virtual Environments & Python Cache
+.venv
+venv
+ENV
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+.pytest_cache
+
+# IDE & Editor Files
+.idea
+.vscode
+*.swp
+*.swo
+
+# Frontend dependencies & local builds (built inside multi-stage Dockerfile)
+frontend/node_modules
+frontend/.oxlintrc.json
+
+# Local database caches & logs
+data/chroma.sqlite3
+data/cache.json
+data/*.jsonl
+*.log
+
+# Sensitive secrets & environment files
+.env
+.env.*
+!.env.example
+
+# Temporary and test files
+test_api.py
+generate_sih_pdf.py
+*.pdf
+scratch/

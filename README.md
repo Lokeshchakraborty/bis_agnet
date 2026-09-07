@@ -39,7 +39,7 @@ GOOGLE_API_KEY="your-google-gemini-api-key"
 MISTRAL_API_KEY="your-mistral-api-key"
 
 # Optional overrides
-BIS_LLM_MODEL="gemini-3.5-flash-lite"
+BIS_LLM_MODEL="gemini-3.5-flash"
 BIS_EMBEDDING_PROVIDER="MistralAIEmbeddings"
 BIS_CACHE_ENABLED="true"
 ```

@@ -41,10 +41,13 @@ console = Console()
 @dataclass(frozen=True)
 class Config:
     """Central configuration for models, paths, retrieval parameters, and caching."""
-    embedding_provider: str = os.getenv("BIS_EMBEDDING_PROVIDER", "MistralAIEmbeddings")
-    embedding_model: str = os.getenv("BIS_EMBEDDING_MODEL", "mistral-embed-2312")
+    embedding_provider: str = os.getenv("BIS_EMBEDDING_PROVIDER", os.getenv("EMBEDDING_PROVIDER", "MistralAIEmbeddings"))
+    embedding_model: str = os.getenv("BIS_EMBEDDING_MODEL", os.getenv("EMBEDDING_MODEL", "mistral-embed-2312"))
     embedding_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    llm_model: str = os.getenv("BIS_LLM_MODEL", "gemini-3.5-flash-lite")
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    mistral_api_key: str = os.getenv("MISTRAL_API_KEY", "")
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    llm_model: str = os.getenv("BIS_LLM_MODEL", "gemini-3.5-flash")
     llm_temperature: float = float(os.getenv("BIS_LLM_TEMPERATURE", "0.2"))
     db_path: str = os.getenv("BIS_CHROMA_PATH", str(DATA_DIR / "chroma_db"))
     cache_path: str = os.getenv("BIS_CACHE_PATH", str(DATA_DIR / "cache.json"))
@@ -55,12 +58,17 @@ class Config:
     max_stored_history: int = int(os.getenv("BIS_MAX_STORED_HISTORY", "5"))
     max_retries: int = int(os.getenv("BIS_LLM_MAX_RETRIES", "3"))
     retry_backoff_seconds: float = float(os.getenv("BIS_RETRY_BACKOFF", "1.5"))
-    log_level: str = os.getenv("BIS_LOG_LEVEL", "INFO")
-    cache_enabled: bool = os.getenv("BIS_CACHE_ENABLED", "true").lower() == "true"
-    vector_store_type: str = os.getenv("BIS_VECTOR_STORE_TYPE", "pgvector")
+    max_completion_tokens: int = int(os.getenv("BIS_MAX_COMPLETION_TOKENS", "1800"))
+    context_max_chars: int = int(os.getenv("BIS_CONTEXT_MAX_CHARS", "1400"))
+    log_level: str = os.getenv("BIS_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO"))
+    cache_enabled: bool = os.getenv("BIS_CACHE_ENABLED", os.getenv("CACHE_ENABLED", "true")).lower() == "true"
+    vector_store_type: str = os.getenv("BIS_VECTOR_STORE_TYPE", os.getenv("VECTOR_STORE_TYPE", "pgvector"))
     database_url: str = os.getenv("DATABASE_URL", "")
     supabase_url: str = os.getenv("SUPABASE_URL", "")
     supabase_key: str = os.getenv("SUPABASE_KEY", os.getenv("SUPABASE_ANON_KEY", os.getenv("SUPABASE_SERVICE_KEY", "")))
+    host: str = os.getenv("HOST", "0.0.0.0")
+    port: int = int(os.getenv("PORT", "8000"))
+    workers: int = int(os.getenv("WORKERS", "1"))
 
     def get_pgvector_connection_string(self) -> str:
         """Format database URL for psycopg3 driver used by PGVector."""
@@ -96,7 +104,7 @@ def validate_environment() -> None:
         )
         sys.exit(1)
 
-    if not Path(CONFIG.db_path).exists():
+    if CONFIG.vector_store_type == "chroma" and not Path(CONFIG.db_path).exists():
         console.print(
             f"[yellow]Warning: Chroma DB path '{CONFIG.db_path}' does not exist yet. "
             "Run 'python src/ingestion/build_vectordb.py' to populate it.[/yellow]"

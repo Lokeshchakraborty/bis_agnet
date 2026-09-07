@@ -144,6 +144,10 @@ async def init_supabase_db() -> bool:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS total_tokens_burned INTEGER DEFAULT 0;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS total_queries_count INTEGER DEFAULT 0;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_provider TEXT DEFAULT 'google';",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_model TEXT DEFAULT 'gemini-3.5-flash';",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_api_key TEXT DEFAULT '';",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_base_url TEXT DEFAULT '';",
         "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'default_user';",
 
         """
@@ -261,7 +265,7 @@ async def authenticate_user_in_supabase(email: str, password: str) -> Dict[str, 
     if not engine:
         return {"success": False, "error": "Database connection unavailable"}
 
-    sql = "SELECT user_id, email, full_name, password_hash, role, created_at FROM users WHERE LOWER(email) = :email;"
+    sql = "SELECT user_id, email, full_name, password_hash, role, llm_provider, llm_model, llm_api_key, llm_base_url, created_at FROM users WHERE LOWER(email) = :email;"
 
     try:
         from sqlalchemy import text
@@ -286,6 +290,10 @@ async def authenticate_user_in_supabase(email: str, password: str) -> Dict[str, 
                     "full_name": row.full_name,
                     "role": user_role,
                     "is_admin": is_admin,
+                    "llm_provider": getattr(row, "llm_provider", "google") or "google",
+                    "llm_model": getattr(row, "llm_model", "gemini-3.5-flash") or "gemini-3.5-flash",
+                    "llm_api_key": getattr(row, "llm_api_key", "") or "",
+                    "llm_base_url": getattr(row, "llm_base_url", "") or "",
                     "created_at": row.created_at.isoformat() if row.created_at else "",
                 },
             }
@@ -323,6 +331,70 @@ async def change_user_password_in_supabase(user_id: str, old_password: str, new_
     except Exception as exc:
         logger.error("Failed to change password for user [%s]: %s", user_id, exc)
         return {"success": False, "error": str(exc)}
+
+
+async def update_user_model_config_in_supabase(
+    user_id: str,
+    llm_provider: str,
+    llm_model: str,
+    llm_api_key: str = "",
+    llm_base_url: str = "",
+) -> Dict[str, Any]:
+    """Save user BYOK model provider, model name, API key, and base URL in Supabase PostgreSQL."""
+    engine = get_async_db_engine()
+    if not engine:
+        return {"success": False, "error": "Database unavailable"}
+
+    sql = """
+    UPDATE users
+    SET llm_provider = :provider,
+        llm_model = :model,
+        llm_api_key = :key,
+        llm_base_url = :url
+    WHERE user_id = :user_id;
+    """
+    try:
+        from sqlalchemy import text
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(sql),
+                {
+                    "user_id": user_id,
+                    "provider": llm_provider or "google",
+                    "model": llm_model or "gemini-3.5-flash",
+                    "key": llm_api_key or "",
+                    "url": llm_base_url or "",
+                },
+            )
+        logger.info("Updated BYOK model config for user [%s]: %s / %s", user_id, llm_provider, llm_model)
+        return {"success": True, "message": "Model configuration saved successfully."}
+    except Exception as exc:
+        logger.error("Failed to update user model config: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+
+async def get_user_model_config_from_supabase(user_id: str) -> Dict[str, Any]:
+    """Retrieve saved BYOK model config for a given user_id."""
+    engine = get_async_db_engine()
+    if not engine or not user_id or user_id == "default_user":
+        return {}
+    sql = "SELECT llm_provider, llm_model, llm_api_key, llm_base_url FROM users WHERE user_id = :user_id OR LOWER(email) = LOWER(:user_id);"
+    try:
+        from sqlalchemy import text
+        async with engine.connect() as conn:
+            result = await conn.execute(text(sql), {"user_id": user_id})
+            row = result.fetchone()
+            if row and row.llm_provider:
+                return {
+                    "llm_provider": row.llm_provider,
+                    "llm_model": row.llm_model,
+                    "llm_api_key": row.llm_api_key or "",
+                    "llm_base_url": row.llm_base_url or "",
+                }
+    except Exception as exc:
+        logger.warning("Failed to fetch user model config for '%s': %s", user_id, exc)
+    return {}
+
 
 
 
@@ -372,17 +444,23 @@ async def save_session_to_supabase(
         return False
 
 
-async def get_session_from_supabase(session_id: str) -> Optional[Dict[str, Any]]:
+async def get_session_from_supabase(session_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Fetch session record from Supabase PostgreSQL."""
     engine = get_async_db_engine()
     if not engine:
         return None
 
-    sql = "SELECT session_id, user_id, active_product_context, turn_count, history FROM sessions WHERE session_id = :session_id;"
+    if user_id:
+        sql = "SELECT session_id, user_id, active_product_context, turn_count, history FROM sessions WHERE session_id = :session_id AND user_id = :user_id;"
+        params = {"session_id": session_id, "user_id": user_id}
+    else:
+        sql = "SELECT session_id, user_id, active_product_context, turn_count, history FROM sessions WHERE session_id = :session_id;"
+        params = {"session_id": session_id}
+
     try:
         from sqlalchemy import text
         async with engine.connect() as conn:
-            result = await conn.execute(text(sql), {"session_id": session_id})
+            result = await conn.execute(text(sql), params)
             row = result.fetchone()
             if row:
                 return {
@@ -406,7 +484,7 @@ async def list_user_sessions_from_supabase(user_id: str) -> List[Dict[str, Any]]
     sql = """
     SELECT session_id, user_id, active_product_context, turn_count, updated_at
     FROM sessions
-    WHERE user_id = :user_id OR user_id = 'default_user'
+    WHERE user_id = :user_id
     ORDER BY updated_at DESC;
     """
     try:
@@ -429,17 +507,23 @@ async def list_user_sessions_from_supabase(user_id: str) -> List[Dict[str, Any]]
         return []
 
 
-async def delete_session_from_supabase(session_id: str) -> bool:
+async def delete_session_from_supabase(session_id: str, user_id: Optional[str] = None) -> bool:
     """Delete a session record from Supabase PostgreSQL."""
     engine = get_async_db_engine()
     if not engine:
         return False
 
-    sql = "DELETE FROM sessions WHERE session_id = :session_id;"
+    if user_id:
+        sql = "DELETE FROM sessions WHERE session_id = :session_id AND user_id = :user_id;"
+        params = {"session_id": session_id, "user_id": user_id}
+    else:
+        sql = "DELETE FROM sessions WHERE session_id = :session_id;"
+        params = {"session_id": session_id}
+
     try:
         from sqlalchemy import text
         async with engine.begin() as conn:
-            res = await conn.execute(text(sql), {"session_id": session_id})
+            res = await conn.execute(text(sql), params)
             deleted = (res.rowcount or 0) > 0
         if deleted:
             logger.info("Successfully deleted session '%s' from Supabase PostgreSQL.", session_id)
@@ -472,7 +556,7 @@ async def log_audit_to_supabase(audit_record: Dict[str, Any]) -> bool:
     try:
         from sqlalchemy import text
         async with engine.begin() as conn:
-            await conn.execute(
+            res = await conn.execute(
                 text(sql),
                 {
                     "interaction_id": audit_record.get("interaction_id"),
@@ -494,19 +578,23 @@ async def log_audit_to_supabase(audit_record: Dict[str, Any]) -> bool:
                     "payload": json.dumps(audit_record),
                 },
             )
+            # Only increment user token burn if a NEW row was actually inserted
+            if res.rowcount and res.rowcount > 0:
+                user_id = audit_record.get("user_id")
+                tu = audit_record.get("token_usage", {})
+                if isinstance(tu, str):
+                    try:
+                        tu = json.loads(tu)
+                    except Exception:
+                        tu = {}
+                burned = 0
+                if isinstance(tu, dict):
+                    p = int(tu.get("turn_prompt_tokens") or tu.get("prompt_tokens") or 0)
+                    c = int(tu.get("turn_completion_tokens") or tu.get("completion_tokens") or 0)
+                    burned = int(tu.get("turn_llm_tokens") or tu.get("total_tokens") or (p + c) or 0)
+                if user_id and user_id != "default_user" and burned > 0:
+                    await record_token_burn_for_user_in_supabase(user_id, burned)
         logger.info("Successfully persisted audit log record %s to Supabase.", audit_record.get("interaction_id", "")[:8])
-        user_id = audit_record.get("user_id")
-        tu = audit_record.get("token_usage", {})
-        if isinstance(tu, str):
-            try:
-                tu = json.loads(tu)
-            except Exception:
-                tu = {}
-        burned = 0
-        if isinstance(tu, dict):
-            burned = int(tu.get("turn_llm_tokens") or tu.get("total_tokens") or (tu.get("turn_prompt_tokens", 0) + tu.get("turn_completion_tokens", 0)) or tu.get("session_total_llm_tokens", 0) or 0)
-        if user_id and burned > 0:
-            await record_token_burn_for_user_in_supabase(user_id, burned)
         return True
     except Exception as exc:
         logger.warning("Failed to insert audit record to Supabase: %s", exc)
@@ -615,10 +703,9 @@ async def get_user_account_usage_from_supabase(user_id: str) -> Dict[str, Any]:
             comp_t = 0
             log_total = 0
             saved_t = 0
-            log_queries = 0
+            log_queries = len(rows)
 
             for row in rows:
-                log_queries += 1
                 tu = row.token_usage
                 if isinstance(tu, str):
                     try:
@@ -628,15 +715,26 @@ async def get_user_account_usage_from_supabase(user_id: str) -> Dict[str, Any]:
                 if isinstance(tu, dict):
                     p = int(tu.get("turn_prompt_tokens") or tu.get("prompt_tokens") or 0)
                     c = int(tu.get("turn_completion_tokens") or tu.get("completion_tokens") or 0)
-                    t = int(tu.get("turn_llm_tokens") or tu.get("total_tokens") or (p + c) or tu.get("session_total_llm_tokens") or 0)
+                    # Turn tokens = prompt + completion for that specific turn
+                    t = int(tu.get("turn_llm_tokens") or tu.get("total_tokens") or (p + c) or 0)
                     s = int(tu.get("session_total_saved_tokens") or tu.get("estimated_saved_tokens") or 0)
                     prompt_t += p
                     comp_t += c
-                    log_total += t
+                    log_total += t if t > 0 else (p + c)
                     saved_t += s
 
-            final_total_tokens = max(tokens_count, log_total, prompt_t + comp_t)
-            final_queries = max(queries_count, log_queries)
+            # Calculate exact ground-truth total tokens from prompt + completion sum
+            final_total_tokens = prompt_t + comp_t if (prompt_t + comp_t) > 0 else (user_row.total_tokens_burned if user_row else 0)
+            final_queries = log_queries if log_queries > 0 else (user_row.total_queries_count if user_row else 0)
+
+            # Sync corrected values back to users table if needed
+            if user_row and (user_row.total_tokens_burned != final_total_tokens or user_row.total_queries_count != final_queries):
+                try:
+                    update_sql = "UPDATE users SET total_tokens_burned = :t, total_queries_count = :q WHERE user_id = :uid;"
+                    async with engine.begin() as update_conn:
+                        await update_conn.execute(text(update_sql), {"t": final_total_tokens, "q": final_queries, "uid": actual_user_id})
+                except Exception:
+                    pass
 
             return {
                 "user_id": user_id,

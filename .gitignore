@@ -1,20 +1,63 @@
+# Environment and Secrets
 .env
 .env.*
+!.env.example
+*.pem
+*.key
+
+# Python Bytecode & Cache
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
+*.py[cod]
+*$py.class
 *.egg-info/
-dist/
+.Python
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+var/
+sdist/
+installed.cfg
+*.egg
+
+# Virtual Environments
 .venv/
 venv/
 ENV/
+env/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Data, Vector Stores & Persistence
 data/chroma_db/
 data/chroma.sqlite3
 data/cache.json
 data/*.jsonl
+*.log
+
+# Frontend Builds & Dependencies
 frontend/node_modules/
+frontend/.oxlintrc.json
 frontend/dist/
 
+# IDE & Editor Settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Generated PDFs & Temporary Dossiers
+SIH_Idea_Description_*.pdf
+scratch/

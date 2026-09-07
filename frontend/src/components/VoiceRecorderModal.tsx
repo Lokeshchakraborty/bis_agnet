@@ -10,6 +10,7 @@ interface VoiceRecorderModalProps {
   onClose: () => void;
   sessionId: string;
   onVoiceSuccess: (voiceResponse: VoiceQueryResponse) => void;
+  theme?: 'light' | 'dark';
 }
 
 export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
@@ -17,7 +18,9 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
   onClose,
   sessionId,
   onVoiceSuccess,
+  theme = 'light',
 }) => {
+  const isDark = theme === 'dark';
   const [isRecording, setIsRecording] = useState(false);
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -60,6 +63,7 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
         setRecordingTime((prev) => prev + 1);
       }, 1000);
     } catch (err: any) {
+      console.error('Microphone recording error:', err);
       setErrorMessage('Microphone access denied or unsupported browser.');
     }
   };
@@ -103,9 +107,9 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(7, 9, 19, 0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
         {/* Modal Container */}
-        <div style={{ background: 'var(--gemini-bg-card)', border: '1px solid var(--glass-border)', borderRadius: '24px', width: '420px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
+        <div style={{ background: isDark ? '#1E1F20' : '#FFFFFF', border: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid var(--glass-border)', borderRadius: '24px', width: '420px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', boxShadow: isDark ? '0 25px 60px rgba(0, 0, 0, 0.6)' : '0 20px 45px -10px rgba(0, 0, 0, 0.15)' }}>
           {/* Close Button */}
           <button
             onClick={onClose}
@@ -116,11 +120,11 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
 
           {/* Modal Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '50%', background: 'rgba(155, 81, 224, 0.15)', color: 'var(--gemini-purple)' }}>
+            <div style={{ padding: '10px', borderRadius: '50%', background: isDark ? 'rgba(124, 58, 237, 0.2)' : '#F5F3FF', color: '#A855F7' }}>
               <Volume2 size={22} />
             </div>
             <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#FFFFFF' }}>Gemini Voice RAG</h3>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)' }}>Gemini Voice RAG</h3>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 Speak your query. Whisper Speech-to-Text will transcribe and query RAG.
               </p>
@@ -128,7 +132,7 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
           </div>
 
           {/* Visual Recording Wave Animation */}
-          <div style={{ height: '100px', background: 'rgba(0, 0, 0, 0.3)', borderRadius: '16px', border: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0 24px' }}>
+          <div style={{ height: '100px', background: isDark ? '#131314' : '#F8FAFC', borderRadius: '16px', border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '0 24px' }}>
             {isRecording ? (
               Array.from({ length: 12 }).map((_, idx) => (
                 <div
@@ -152,13 +156,13 @@ export const VoiceRecorderModal: React.FC<VoiceRecorderModalProps> = ({
 
           {/* Timer */}
           {isRecording && (
-            <div style={{ textAlign: 'center', fontSize: '1.2rem', fontWeight: 700, color: 'var(--gemini-purple)' }} className="mono">
+            <div style={{ textAlign: 'center', fontSize: '1.2rem', fontWeight: 700, color: '#7C3AED' }} className="mono">
               00:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
             </div>
           )}
 
           {errorMessage && (
-            <div style={{ color: '#EF4444', fontSize: '0.78rem', textAlign: 'center' }}>
+            <div style={{ color: '#DC2626', fontSize: '0.78rem', textAlign: 'center' }}>
               {errorMessage}
             </div>
           )}

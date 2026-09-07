@@ -14,6 +14,7 @@ interface ChatWindowProps {
   backendStatus?: string;
   currentUser?: UserProfile | null;
   sessionId?: string;
+  theme?: 'light' | 'dark';
 }
 
 const GEMINI_HOME_CARDS = [
@@ -60,6 +61,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   backendStatus,
   currentUser,
   sessionId,
+  theme = 'light',
 }) => {
 
   const [inputText, setInputText] = useState('');
@@ -156,31 +158,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const renderFormattedText = (text: string) => {
     const lines = text.split('\n');
     let subCounter = 0;
+    const isDark = theme === 'dark';
 
     return lines.map((line, idx) => {
       const trimmed = line.trim();
       if (line.startsWith('### ')) {
         subCounter = 0;
-        return <h3 key={idx} style={{ fontSize: '1.2rem', fontWeight: 700, color: '#FFFFFF', marginTop: '20px', marginBottom: '10px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '4px' }}>{line.replace('### ', '')}</h3>;
+        return <h3 key={idx} style={{ fontSize: '1.2rem', fontWeight: 700, color: isDark ? '#FFFFFF' : '#0F172A', marginTop: '20px', marginBottom: '10px', borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid #E2E8F0', paddingBottom: '4px' }}>{line.replace('### ', '')}</h3>;
       }
       if (line.startsWith('## ')) {
         subCounter = 0;
-        return <h2 key={idx} style={{ fontSize: '1.35rem', fontWeight: 700, color: '#FFFFFF', marginTop: '22px', marginBottom: '12px' }}>{line.replace('## ', '')}</h2>;
+        return <h2 key={idx} style={{ fontSize: '1.35rem', fontWeight: 700, color: isDark ? '#FFFFFF' : '#0F172A', marginTop: '22px', marginBottom: '12px' }}>{line.replace('## ', '')}</h2>;
       }
 
       // Sub-Bullet Points (Numbered: 1., 2., 3.)
       const isSubBullet = line.startsWith('  ') || line.startsWith('\t');
-      const numMatch = trimmed.match(/^(\d+)[\.\)]\s+(.*)/);
+      const numMatch = trimmed.match(/^(\d+)[.)]\s+(.*)/);
       
       if (isSubBullet || (numMatch && !trimmed.startsWith('•') && !trimmed.startsWith('●'))) {
         subCounter += 1;
-        const content = numMatch ? numMatch[2] : trimmed.replace(/^[\*\-\•\◦\d\.]+\s+/, '');
+        const content = numMatch ? numMatch[2] : trimmed.replace(/^[*•◦\d.-]+\s+/, '');
         const numberLabel = numMatch ? `${numMatch[1]}.` : `${subCounter}.`;
 
         return (
           <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginTop: '5px', marginBottom: '5px', paddingLeft: '0px' }}>
-            <span style={{ color: '#D1D5DB', fontWeight: 'bold', fontSize: '0.92rem', lineHeight: '1.65', minWidth: '20px' }}>{numberLabel}</span>
-            <div style={{ flex: 1, lineHeight: '1.65', color: '#D1D5DB', fontSize: '0.96rem' }}>
+            <span style={{ color: isDark ? '#94A3B8' : '#475569', fontWeight: 'bold', fontSize: '0.92rem', lineHeight: '1.65', minWidth: '20px' }}>{numberLabel}</span>
+            <div style={{ flex: 1, lineHeight: '1.65', color: isDark ? '#E2E8F0' : '#334155', fontSize: '0.96rem' }}>
               {parseBold(content)}
             </div>
           </div>
@@ -188,14 +191,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         );
       }
 
-      // Parent Level Bullet Points (White Big Solid Circle Bullet: ●)
+      // Parent Level Bullet Points (Blue Solid Circle Bullet: ●)
       if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ') || trimmed.startsWith('● ')) {
         subCounter = 0;
-        const content = trimmed.replace(/^[\-\*\•\●]\s+/, '');
+        const content = trimmed.replace(/^[-*•●]\s+/, '');
         return (
           <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginTop: '16px', marginBottom: '8px', paddingLeft: '0px' }}>
-            <span style={{ color: '#FFFFFF', fontSize: '1.4rem', lineHeight: '1.4', minWidth: '20px' }}>●</span>
-            <div style={{ flex: 1, lineHeight: '1.6', color: '#FFFFFF', fontWeight: 700, fontSize: '1.2rem' }}>
+            <span style={{ color: isDark ? '#60A5FA' : '#2563EB', fontSize: '1.3rem', lineHeight: '1.4', minWidth: '20px' }}>●</span>
+            <div style={{ flex: 1, lineHeight: '1.6', color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: 700, fontSize: '1.15rem' }}>
               {parseBold(content)}
             </div>
           </div>
@@ -218,9 +221,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const parseBold = (str: string) => {
     const parts = str.split(/(\*\*.*?\*\*)/g);
+    const isDark = theme === 'dark';
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} style={{ color: '#FFFFFF', fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
+        return <strong key={i} style={{ color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
       }
       return part;
     });
@@ -231,39 +235,39 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       {/* Gemini Stream Area */}
       <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         {messages.length === 0 ? (
-          <div style={{ margin: 'auto', maxWidth: '840px', width: '100%', padding: '40px 20px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+          <div style={{ margin: 'auto', maxWidth: '840px', width: '100%', padding: '30px 16px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {/* Gemini Hero Greeting */}
-            <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <h1 className="gemini-gradient-text" style={{ fontSize: '3.2rem', fontWeight: 600, letterSpacing: '-0.03em', lineHeight: '1.1' }}>
+            <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <h1 className="gemini-gradient-text chat-hero-title" style={{ fontSize: '3.2rem', fontWeight: 600, letterSpacing: '-0.03em', lineHeight: '1.1' }}>
                 Hello, Compliance Officer
               </h1>
-              <h2 style={{ fontSize: '2.5rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+              <h2 className="chat-hero-subtitle" style={{ fontSize: '2.2rem', fontWeight: 500, color: 'var(--text-muted)' }}>
                 How can I help with BIS standards today?
               </h2>
             </div>
 
             {/* 4 Gemini Prompt Recommendation Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+            <div className="chat-home-cards-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
               {GEMINI_HOME_CARDS.map((card, idx) => (
                 <div
                   key={idx}
                   className="gemini-card"
                   onClick={() => onSendMessage(card.prompt)}
                   style={{
-                    padding: '20px',
-                    minHeight: '150px',
+                    padding: '18px',
+                    minHeight: '130px',
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
                     cursor: 'pointer',
                   }}
                 >
-                  <p style={{ fontSize: '0.95rem', fontWeight: 500, color: 'var(--text-main)', lineHeight: '1.45' }}>
+                  <p style={{ fontSize: '0.92rem', fontWeight: 500, color: 'var(--text-main)', lineHeight: '1.45' }}>
                     {card.title}
                   </p>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{card.subtitle}</span>
-                    <span style={{ padding: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%', display: 'flex', alignItems: 'center' }}><BisLogo size={18} /></span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{card.subtitle}</span>
+                    <span style={{ padding: '5px', background: 'rgba(0,0,0,0.04)', borderRadius: '50%', display: 'flex', alignItems: 'center' }}><BisLogo size={16} /></span>
                   </div>
                 </div>
               ))}
@@ -309,14 +313,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     <div
                       style={{
                         maxWidth: '75%',
-                        background: '#282A2C',
-                        border: '1px solid var(--glass-border)',
+                        background: theme === 'dark' ? '#282A2C' : '#EFF6FF',
+                        border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid #BFDBFE',
                         borderRadius: '24px 24px 4px 24px',
                         padding: '14px 22px',
-                        color: '#FFFFFF',
+                        color: theme === 'dark' ? '#FFFFFF' : '#0F172A',
                         fontSize: '1.05rem',
                         lineHeight: '1.6',
-                        boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
+                        boxShadow: theme === 'dark' ? '0 4px 15px rgba(0, 0, 0, 0.3)' : '0 2px 10px rgba(37, 99, 235, 0.08)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '12px',
@@ -351,9 +355,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                               onClick={() => handleDownloadPdf(msg)}
                               disabled={downloadingMsgId === msg.id}
                               style={{
-                                background: 'rgba(245, 158, 11, 0.12)',
-                                border: '1px solid rgba(245, 158, 11, 0.35)',
-                                color: '#F59E0B',
+                                background: '#FEF3C7',
+                                border: '1px solid #FDE68A',
+                                color: '#B45309',
                                 borderRadius: '16px',
                                 padding: '5px 12px',
                                 cursor: 'pointer',
@@ -391,8 +395,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                               marginTop: '14px',
                               padding: '12px 16px',
                               borderRadius: '12px',
-                              background: 'linear-gradient(135deg, rgba(217, 119, 6, 0.12) 0%, rgba(15, 43, 92, 0.2) 100%)',
-                              border: '1px solid rgba(245, 158, 11, 0.35)',
+                              background: '#FEF3C7',
+                              border: '1px solid #FCD34D',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
@@ -403,10 +407,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <BisLogo size={24} />
                               <div>
-                                <div style={{ fontWeight: 600, color: '#F59E0B', fontSize: '0.88rem' }}>
+                                <div style={{ fontWeight: 600, color: '#B45309', fontSize: '0.88rem' }}>
                                   Official BIS Compliance Research Dossier (PDF)
                                 </div>
-                                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                <div style={{ fontSize: '0.78rem', color: '#78350F' }}>
                                   Includes authoritative IS standard titles, technical limits, licensing roadmap & SHA-256 audit hash.
                                 </div>
                               </div>
@@ -415,8 +419,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                               onClick={() => handleDownloadPdf(msg)}
                               disabled={downloadingMsgId === msg.id}
                               style={{
-                                background: '#F59E0B',
-                                color: '#0f172a',
+                                background: '#D97706',
+                                color: '#FFFFFF',
                                 border: 'none',
                                 borderRadius: '20px',
                                 padding: '6px 16px',
@@ -426,7 +430,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '6px',
-                                boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
+                                boxShadow: '0 2px 8px rgba(217, 119, 6, 0.25)',
                                 transition: 'transform 0.15s ease',
                               }}
                               onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
@@ -440,14 +444,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
                         {/* Gemini Expandable Telemetry Accordion */}
                         {res && (
-                          <div style={{ marginTop: '10px', paddingTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                          <div style={{ marginTop: '10px', paddingTop: '12px', borderTop: `1px solid ${theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0'}` }}>
                             <button
                               onClick={() => toggleDetails(msg.id)}
                               style={{
-                                background: 'rgba(255, 255, 255, 0.04)',
+                                background: theme === 'dark' ? '#282A2C' : '#F8FAFC',
                                 border: '1px solid var(--glass-border)',
                                 borderRadius: '18px',
-                                color: 'var(--text-subtle)',
+                                color: theme === 'dark' ? '#CBD5E1' : 'var(--text-subtle)',
                                 fontSize: '0.82rem',
                                 cursor: 'pointer',
                                 display: 'inline-flex',
@@ -464,15 +468,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                             </button>
 
                             {isDetailsOpen && (
-                              <div className="animate-fade-in" style={{ marginTop: '12px', padding: '16px', borderRadius: '16px', background: 'var(--gemini-bg-card)', border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.88rem' }}>
+                              <div className="animate-fade-in" style={{ marginTop: '12px', padding: '16px', borderRadius: '16px', background: theme === 'dark' ? '#1E1F20' : '#FFFFFF', border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.88rem', boxShadow: theme === 'dark' ? '0 4px 14px rgba(0, 0, 0, 0.4)' : '0 2px 8px rgba(0, 0, 0, 0.04)' }}>
                                 {/* Cache Hit Badge */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   {res.cache_hit ? (
-                                    <span style={{ color: 'var(--gemini-gold)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ color: '#F59E0B', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                       <Zap size={15} /> 0-Token Instant Cache Hit
                                     </span>
                                   ) : (
-                                    <span style={{ color: 'var(--gemini-cyan)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ color: '#38BDF8', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                       <Sparkles size={15} /> LangGraph Hybrid RAG ({res.response_time_ms} ms)
                                     </span>
                                   )}
@@ -484,7 +488,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                                     <span style={{ color: 'var(--text-muted)' }}>Applicable Standards:</span>
                                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
                                       {res.applicable_standards.map((st, i) => (
-                                        <span key={i} style={{ background: 'rgba(6, 182, 212, 0.15)', border: '1px solid rgba(6, 182, 212, 0.3)', color: '#06B6D4', padding: '4px 10px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 600 }}>
+                                        <span key={i} style={{ background: theme === 'dark' ? 'rgba(56, 189, 248, 0.15)' : '#E0F2FE', border: theme === 'dark' ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid #BAE6FD', color: theme === 'dark' ? '#7DD3FC' : '#0369A1', padding: '4px 10px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 600 }}>
                                           {st}
                                         </span>
                                       ))}
@@ -495,14 +499,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                                 {/* Citation */}
                                 {res.source_citation && (
                                   <div style={{ color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <BookOpen size={15} color="var(--gemini-cyan)" />
+                                    <BookOpen size={15} color={theme === 'dark' ? '#38BDF8' : '#0284C7'} />
                                     <span>Source Citation: {res.source_citation}</span>
                                   </div>
                                 )}
 
                                 {/* Next Step */}
                                 {res.next_step && (
-                                  <div style={{ color: 'var(--gemini-gold)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div style={{ color: theme === 'dark' ? '#FBBF24' : '#B45309', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <ArrowRight size={15} />
                                     <span>Actionable Next Step: {res.next_step}</span>
                                   </div>
@@ -518,9 +522,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                                   style={{
                                     padding: '8px 16px',
                                     borderRadius: '20px',
-                                    background: 'rgba(155, 81, 224, 0.1)',
-                                    border: '1px solid rgba(155, 81, 224, 0.3)',
-                                    color: 'var(--gemini-purple)',
+                                    background: theme === 'dark' ? 'rgba(124, 58, 237, 0.18)' : '#F5F3FF',
+                                    border: theme === 'dark' ? '1px solid rgba(124, 58, 237, 0.4)' : '1px solid #DDD6FE',
+                                    color: theme === 'dark' ? '#C4B5FD' : '#7C3AED',
                                     fontSize: '0.85rem',
                                     cursor: 'pointer',
                                     display: 'inline-flex',
@@ -544,27 +548,25 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           })
         )}
 
-        {/* Clean Retrieval State Indicator with small Animated BIS Logo */}
+        {/* Clean Retrieval State Indicator with subtle flickering transition */}
         {isLoading && (
-          <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%', padding: '16px 20px' }}>
+          <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%', padding: '8px 20px' }}>
             <div
+              className="retrieval-flicker"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '12px',
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid var(--glass-border)',
-                borderRadius: '16px',
-                padding: '10px 18px',
-                color: '#FFFFFF',
-                fontSize: '0.98rem',
+                gap: '10px',
+                background: 'transparent',
+                border: 'none',
+                boxShadow: 'none',
+                padding: '0',
+                fontSize: '0.94rem',
                 fontWeight: 500,
-                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
               }}
-              className="animate-fade-in"
             >
-              <BisLogo size={22} animated />
-              <span className="gemini-wave-text" style={{ color: '#FFFFFF', fontWeight: 500, letterSpacing: '-0.01em' }}>
+              <BisLogo size={18} />
+              <span style={{ color: theme === 'dark' ? '#94A3B8' : '#475569', fontWeight: 500, letterSpacing: '-0.01em' }}>
                 {cleanStatusText(backendStatus || THINKING_STEPS[loadingStepIdx])}
               </span>
             </div>
@@ -577,15 +579,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Google Gemini 28px Rounded Pill Input Bar */}
-      <div style={{ width: '100%', background: 'var(--gemini-bg-main)', padding: '12px 20px 24px 20px' }}>
+      <div className="chat-input-bar-container" style={{ width: '100%', background: 'var(--gemini-bg-main)', padding: '12px 20px 24px 20px' }}>
         <div style={{ maxWidth: '820px', margin: '0 auto' }}>
           <form
             onSubmit={handleSubmit}
             style={{
-              background: 'var(--gemini-bg-input)',
+              background: theme === 'dark' ? '#1E1F20' : '#FFFFFF',
               borderRadius: '28px',
-              border: '1px solid var(--glass-border)',
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+              border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.15)' : '1px solid var(--glass-border)',
+              boxShadow: theme === 'dark' ? '0 4px 20px rgba(0, 0, 0, 0.4)' : '0 4px 20px rgba(0, 0, 0, 0.08)',
               display: 'flex',
               alignItems: 'center',
               padding: '10px 18px',
@@ -597,7 +599,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               type="button"
               onClick={() => alert('📄 Document & Standard PDF attachment support is coming in the next BIS SATHI update.')}
               style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'color 0.2s ease' }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--gemini-purple)')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#2563EB')}
               onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
               title="Attach standard document / specification (Coming soon)"
             >
@@ -649,9 +651,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 width: '40px',
                 height: '40px',
                 borderRadius: '50%',
-                background: !inputText.trim() || isLoading ? 'rgba(255, 255, 255, 0.08)' : 'var(--gemini-sparkle-gradient)',
+                background: !inputText.trim() || isLoading ? 'rgba(0, 0, 0, 0.06)' : 'var(--gemini-sparkle-gradient)',
                 border: 'none',
-                color: '#FFFFFF',
+                color: !inputText.trim() || isLoading ? '#94A3B8' : '#FFFFFF',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

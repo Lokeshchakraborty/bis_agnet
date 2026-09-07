@@ -160,11 +160,36 @@ class AgentNodes:
         self.response_cache = response_cache
         self.token_tracker = token_tracker
 
-        self.structured_response_llm = llm.with_structured_output(BISResponse, include_raw=True)
-        self.structured_intent_llm = llm.with_structured_output(IntentResult, include_raw=True)
+        try:
+            self.structured_response_llm = llm.with_structured_output(BISResponse, include_raw=True)
+            self.structured_intent_llm = llm.with_structured_output(IntentResult, include_raw=True)
+        except Exception as exc:
+            logger.info("Default LLM structured output setup notice: %s", exc)
+            self.structured_response_llm = None
+            self.structured_intent_llm = None
+
+    def _get_llm_for_state(self, state: Optional[AgentState] = None):
+        if not state:
+            return self.llm
+        provider = state.get("llm_provider")
+        model = state.get("llm_model")
+        api_key = state.get("llm_api_key")
+        base_url = state.get("llm_base_url")
+        if provider:
+            from src.agent.llm_factory import create_llm_model
+            try:
+                return create_llm_model(
+                    provider=provider,
+                    model_name=model,
+                    api_key=api_key,
+                    base_url=base_url,
+                )
+            except Exception as exc:
+                logger.warning("Failed to create dynamic LLM for provider '%s': %s. Falling back to default.", provider, exc)
+        return self.llm
 
     @with_retry()
-    def _rewrite_query(self, last_agent_msg: str, query: str) -> str:
+    def _rewrite_query(self, last_agent_msg: str, query: str, state: Optional[AgentState] = None) -> str:
         prompt = ChatPromptTemplate.from_messages([
             ("system",
              "You convert a user's short reply into a full standalone search query.\n\n"
@@ -183,7 +208,8 @@ class AgentNodes:
             ("human", "Agent's Last Message:\n{last_agent_msg}\n\nUser's Reply: {query}"),
         ])
         msg = prompt.format_messages(last_agent_msg=last_agent_msg, query=query)
-        resp = self.llm.invoke(msg)
+        llm = self._get_llm_for_state(state)
+        resp = llm.invoke(msg)
         self.token_tracker.add_llm_usage(getattr(resp, "usage_metadata", None))
 
         content = resp.content
@@ -204,7 +230,7 @@ class AgentNodes:
             sq = state["query"]
         else:
             try:
-                sq = self._rewrite_query(state["chat_history"][-1][1], state["query"])
+                sq = self._rewrite_query(state["chat_history"][-1][1], state["query"], state=state)
             except Exception as exc:
                 logger.error("Query rewrite failed, using raw query: %s", exc)
                 sq = state["query"]
@@ -212,7 +238,7 @@ class AgentNodes:
         return {"standalone_query": sq or state["query"]}
 
     @with_retry()
-    def _classify(self, query: str) -> Intent:
+    def _classify(self, query: str, state: Optional[AgentState] = None) -> Intent:
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a highly accurate intent classification router for the Bureau of Indian Standards (BIS) AI Assistant.
 The user query may be in English, Hinglish (Romanized Hindi/English mix), or pure Hindi (Devanagari).
@@ -230,14 +256,29 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
             ("human", "{query}"),
         ])
         msg = prompt.format_messages(query=query)
-        raw_res = self.structured_intent_llm.invoke(msg)
-        if isinstance(raw_res, dict) and "raw" in raw_res:
-            self.token_tracker.add_llm_usage(getattr(raw_res["raw"], "usage_metadata", None))
-            parsed = raw_res.get("parsed")
-            if parsed and hasattr(parsed, "intent"):
-                return parsed.intent
-        elif hasattr(raw_res, "intent"):
-            return raw_res.intent
+        llm = self._get_llm_for_state(state)
+
+        # 1. Try structured intent classification
+        try:
+            structured_intent_llm = llm.with_structured_output(IntentResult, include_raw=True)
+            raw_res = structured_intent_llm.invoke(msg)
+            if isinstance(raw_res, dict) and "raw" in raw_res:
+                self.token_tracker.add_llm_usage(getattr(raw_res["raw"], "usage_metadata", None))
+                parsed = raw_res.get("parsed")
+                if parsed and hasattr(parsed, "intent"):
+                    return parsed.intent
+            elif hasattr(raw_res, "intent"):
+                return raw_res.intent
+        except Exception as exc:
+            logger.info("Structured intent output unavailable or failed (%s). Falling back to direct text matching.", exc)
+
+        # 2. Fallback for Ollama or models without tool/function calling
+        resp = llm.invoke(msg)
+        self.token_tracker.add_llm_usage(getattr(resp, "usage_metadata", None))
+        text = str(resp.content).lower()
+        for cat in [Intent.HALLMARK, Intent.REGISTRATION, Intent.CERTIFICATION, Intent.LABORATORY, Intent.MANAKONLINE, Intent.CHAT, Intent.CATALOG_SEARCH]:
+            if cat.value in text:
+                return cat
         return Intent.CATALOG_SEARCH
 
     def intent_classifier(self, state: AgentState) -> dict:
@@ -247,7 +288,7 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
             logger.info("Fast 0-token classification: '%s' -> %s", state["standalone_query"], fast_intent.value)
             return {"intent": fast_intent.value}
         try:
-            intent = self._classify(state["standalone_query"])
+            intent = self._classify(state["standalone_query"], state=state)
         except Exception as exc:
             logger.error("Intent classification fallback triggered: %s", exc)
             intent = Intent.CHAT if len(state["standalone_query"].split()) <= 2 else Intent.CATALOG_SEARCH
@@ -282,6 +323,10 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
                 except Exception:
                     context = "No relevant documents found."
 
+            max_chars = getattr(CONFIG, "context_max_chars", 1400) * CONFIG.rerank_top_n
+            if len(context) > max_chars:
+                context = context[:max_chars] + "\n...(context bounded)"
+
             self.token_tracker.add_embedding_text(context)
             return {"retrieved_context": context, "domain": domain.value}
 
@@ -292,10 +337,12 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
         sq = state["standalone_query"]
         self.token_tracker.add_embedding_text(sq)
 
+        max_c = getattr(CONFIG, "context_max_chars", 1400)
+
         def _get_db_docs():
             try:
                 docs = self.catalog_retriever.invoke(sq)
-                return "\n".join(d.page_content for d in docs) if docs else "No local catalog entries found."
+                return "\n".join(d.page_content[:max_c] for d in docs) if docs else "No local catalog entries found."
             except Exception as exc:
                 logger.warning("Local catalog retrieval error: %s", exc)
                 return "No local catalog entries found."
@@ -303,6 +350,8 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
         def _get_scraped_data():
             try:
                 scraped = scrape_bis_portal(sq)
+                if len(scraped) > max_c * 2:
+                    scraped = scraped[:max_c * 2] + "\n...(portal data bounded)"
                 return scraped if scraped.strip() else "(scraper returned no content for this query)"
             except Exception as exc:
                 logger.warning("BIS portal scrape error (%s). Using local DB only.", exc)
@@ -313,122 +362,198 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
             future_scrape = executor.submit(_get_scraped_data)
             db_context = future_db.result()
             scraped = future_scrape.result()
-
         combined = f"[LIVE PORTAL DATA]:\n{scraped}\n\n[LOCAL KNOWLEDGE BASE]:\n{db_context}"
         self.token_tracker.add_embedding_text(combined)
         return {"retrieved_context": combined, "domain": "catalog"}
 
-    @with_retry()
-    def _synthesize(self, chat_history: str, context: str, query: str, is_chat: bool) -> BISResponse:
+    def _build_system_prompt(self, is_chat: bool) -> str:
         if is_chat:
-            system_prompt = (
+            return (
                 "You are a helpful BIS (Bureau of Indian Standards) AI Assistant.\n"
                 "Keep the reply conversational and brief.\n"
                 "Leave applicable_standards, source_citation, and next_step empty for greetings.\n"
                 "Set intent_localized to match the user's greeting language ('सामान्य बातचीत' for Hindi, 'General Chat' for Hinglish/English).\n\n"
                 "LANGUAGE MATCHING RULES:\n"
-                "- If the user greets or chats in Hindi (Devanagari, e.g. 'नमस्ते', 'आप कौन हैं?'), reply in polite Hindi.\n"
-                "- If the user greets or chats in Hinglish (Roman script, e.g. 'Namaste', 'Aap kaun ho?', 'Kya haal hai?'), reply in natural Hinglish.\n"
-                "- If the user greets in English ('Hello', 'Hi'), reply in English.\n\n"
+                "- If the user greets in Hindi (Devanagari, e.g. 'नमस्ते'), reply in polite Hindi.\n"
+                "- If the user greets in Hinglish (Roman script, e.g. 'Namaste'), reply in natural Hinglish.\n"
+                "- If the user greets in English, reply in English.\n\n"
                 "Chat history:\n{chat_history}"
             )
-        else:
-            system_prompt = (
-                "You are an expert BIS (Bureau of Indian Standards) AI Assistant.\n"
-                "Answer based on the provided context first.\n"
-                "If the context contains specific document excerpts, cite them in source_citation.\n\n"
-                "1. REGULATORY AMENDMENTS & DIGITAL MANUAL INTEGRATION (CRITICAL):\n"
-                "   - Account for recent BIS standard amendments in your core_response and compliance_metadata:\n"
-                "     * For mobile phones, IT equipment, and electronics (e.g. IS 16333 Part 3:2022 Amendment No. 1), digital/QR-code-based user manuals and instruction booklets ARE PERMITTED on product packaging provided clear access instructions are printed on the outer packaging.\n"
-                "     * Specify applicable amendments (e.g., 'Amendment No. 1 to IS 16333 (Part 3):2022') in compliance_metadata.amendments_applicable.\n"
-                "     * Set compliance_metadata.digital_qr_manual_allowed to true when applicable.\n"
-                "     * Set compliance_metadata.foreign_manufacturer_requires_air to true if foreign manufacturers require an Authorized Indian Representative (AIR) under FMCS or CRS.\n"
-                "     * Set compliance_metadata.testing_location (e.g., 'BIS-accredited domestic laboratory').\n"
-                "     * Set compliance_metadata.certificate_validity_years (default 2 years unless specified otherwise).\n\n"
-                "2. STRICT SCRIPT AND LANGUAGE MATCHING & ACTIONABLE MANAKONLINE ROUTING:\n"
-                "   - Match the user's exact script and language across ALL synthesized fields:\n"
-                "     * HINDI (Devanagari script, e.g. 'हॉलमार्किंग के लिए कैसे आवेदन करें?'):\n"
-                "       Write core_response, next_step, follow_up_prompt, AND intent_localized in pure, natural Hindi (Devanagari script).\n"
-                "       MUST include official Manakonline portal URL in next_step.\n"
-                "       Example next_step: 'आधिकारिक Manakonline पोर्टल (https://manakonline.in) पर जाएं और ऑनलाइन आवेदन (फॉर्म H-1) जमा करें।'\n"
-                "       Example follow_up_prompt: 'क्या आप एएचसी (AHC) केंद्रों की सूची या शुल्क संरचना के बारे में अधिक जानकारी चाहते हैं?'\n"
-                "       Example intent_localized: 'हॉलमार्क पंजीकरण'\n"
-                "     * HINGLISH (Romanized Hindi, e.g. 'Hallmarking ke liye apply kaise karein?'):\n"
-                "       Write core_response, next_step, follow_up_prompt, AND intent_localized in natural Hinglish using Roman script.\n"
-                "       Example next_step: 'Official Manakonline portal (https://manakonline.in) par jaakar online application (Form H-1) submit karein.'\n"
-                "       Example follow_up_prompt: 'Kya aap HUID fees ya test lab list ke baare mein aur jaan-kaari chahte hain?'\n"
-                "     * ENGLISH:\n"
-                "       Write core_response, next_step, follow_up_prompt, AND intent_localized in clear, professional English.\n"
-                "       Example next_step: 'Navigate to the official Manakonline portal (https://manakonline.in) to register and submit the online application form.'\n"
-                "       Example follow_up_prompt: 'Would you like information regarding HUID fee structures or testing lab locations?'\n\n"
-                "3. TECHNICAL PRECISION & UNTOUCHED REGULATORY CODES:\n"
-                "   - Keep all official IS codes, standard numbers, form numbers, and portal URLs exact and uncorrupted:\n"
-                "     * Standards (e.g. 'IS 1417', 'IS 16333 (Part 3):2022', 'IS 2112', 'IS/ISO 9001')\n"
-                "     * Legal Acts: Always cite the exact statutory act as 'Bureau of Indian Standards Act, 2016 (BIS Act, 2016)'\n"
-                "     * Gold Hallmarking Purity: When discussing purity grades under IS 1417, explicitly mention both karat notation and fineness (e.g. 24K / 999, 23K / 958, 22K / 916, 20K / 833, 18K / 750, 14K / 585)\n"
-                "     * Portal names & URLs (e.g. 'Manakonline portal', 'https://manakonline.in', 'e-BIS')\n"
-                "     * Technical abbreviations (e.g. 'HUID', 'AHC', 'CRS', 'FMCS', 'CML', 'QCO', 'AIR')\n"
-                "   - applicable_standards: List every relevant IS standard code formatted as 'IS XXXX - Description'.\n"
-                "   - source_citation: If context has '[Source N: filename]', cite the exact file name(s).\n\n"
-                "4. STANDARDIZED COMPLIANCE RESPONSE FORMATTING:\n"
-                "   - DO NOT include the heading or text 'Compliance Overview' at the top of core_response.\n"
-                "   - GENERAL / CONCEPTUAL QUERIES (when NO specific product or IS standard code is mentioned, e.g. 'what is certification?', 'what is hallmarking?', 'what is CRS registration?'):\n"
-                "     * Provide a clear, comprehensive, and well-structured paragraph (or 2-3 paragraphs) answering the question directly in plain language.\n"
-                "     * DO NOT generate the 7-bullet compliance breakdown (Applicable Indian Standards, Certification requirements, etc.) for general concept queries where no specific product or IS code is specified.\n"
-                "     * Use follow_up_prompt to ask the user if they would like technical compliance details for a specific product category or IS standard code.\n"
-                "   - PRODUCT-SPECIFIC & IS CODE QUERIES (when a specific product, e.g. 'watering cans', 'mustard oil', 'cement', or specific IS code, e.g. 'IS 4065', 'IS 12701', is mentioned):\n"
-                "     * ALWAYS start directly with a clear, informative 2-3 sentence overview paragraph answering the user's question.\n"
-                "     * AFTER the explanation paragraph, present the compliance breakdown using MAIN BULLET POINTS ('• ') for each category, and ALWAYS INCLUDE INDENTED NUMBERED SUB-ITEMS ('  1. ', '  2. ') under each main category to provide detailed technical points and specifics.\n"
-                "     * Required Main Categories & Numbered Sub-Items Structure:\n"
-                "       • **Applicable Indian Standards for products**:\n"
-                "         1. **Primary Standard**: Exact IS code and title (e.g. **IS 1417:2019**)\n"
-                "         2. **Scope & Purity**: Specific grades, classes, or product scope\n"
-                "       • **Certification requirements**:\n"
-                "         1. **Marking Requirements**: Mandatory ISI Mark / CRS Mark / HUID 6-digit alphanumeric code\n"
-                "         2. **AIR Obligation**: Authorized Indian Representative rules for foreign manufacturers\n"
-                "       • **Relevant BIS schemes**:\n"
-                "         1. **Scheme Name**: Scheme-I (Product Certification), Scheme-IV, CRS, FMCS, Hallmarking Scheme, LRS\n"
-                "       • **Licensing procedures**:\n"
-                "         1. **Portal Application**: Manakonline portal filing (Form H-1 / Form CML)\n"
-                "         2. **Inspection & Audit**: Factory audit and preliminary sample testing rules\n"
-                "       • **Testing requirements**:\n"
-                "         1. **Accredited Testing**: Mandatory NABL/BIS-accredited lab test reports\n"
-                "         2. **Test Parameters**: Specific physical, chemical, mechanical, or safety test parameters\n"
-                "       • **Related standards & Dedicated Amendments**:\n"
-                "         1. **Related IS Codes**: Complementary standards\n"
-                "         2. **Dedicated Amendment Status**: Explicitly state 'Dedicated Amendment Available: Amendment No. X' OR 'No Dedicated Amendment Released'\n"
-                "       • **Answers to technical queries**:\n"
-                "         1. **Quantitative Limits**: State exact numeric thresholds, capacities, tolerances, and test limits\n\n"
+        return (
+            "You are an expert BIS (Bureau of Indian Standards) AI Assistant.\n"
+            "Answer authoritatively based on official BIS regulations, Indian Standards (IS), and provided context.\n\n"
+            "KEY DIRECTIVES:\n"
+            "1. REGULATORY FIDELITY & STANDARDS:\n"
+            "   - Always identify exact Indian Standards (e.g. 'IS 1417', 'IS 12701', 'IS 13252 (Part 1):2010', 'IS 269').\n"
+            "   - Always cite statutory laws as 'Bureau of Indian Standards Act, 2016 (BIS Act, 2016)'.\n"
+            "   - In 'applicable_standards', list all relevant standards formatted as 'IS XXXX - Title'.\n\n"
+            "2. MANDATORY QUANTITATIVE & PARAMETER EXTRACTION:\n"
+            "   - Extract exact numbers, capacities, tolerances, test limits, migration thresholds (e.g. 60 mg/l for IS 12701), and karat fineness (e.g. 24K/999, 22K/916, 18K/750).\n"
+            "   - Use clean Markdown tables when presenting or comparing technical parameters, grades, or test limits.\n\n"
+            "3. STRICT LANGUAGE & SCRIPT MATCHING:\n"
+            "   - HINDI (Devanagari): Answer in natural Hindi; set intent_localized in Hindi (e.g. 'हॉलमार्क पंजीकरण').\n"
+            "   - HINGLISH: Answer in natural conversational Hinglish using Roman script.\n"
+            "   - ENGLISH: Professional, clear technical English.\n\n"
+            "4. MANDATORY DUAL STRUCTURE (PARAGRAPH + STRUCTURED BULLETS & SUB-BULLETS):\n"
+            "   - EVERY compliance, regulatory, IS standard, laboratory, testing, or certification query MUST follow this exact two-tier format:\n"
+            "     1. Comprehensive Overview Paragraph: 2-3 direct sentences answering the query immediately with statutory basis under the Bureau of Indian Standards Act, 2016 (BIS Act, 2016). Never use filler headers like 'Compliance Overview'.\n"
+            "     2. Detailed Compliance Breakdown: Present using MAIN BULLET POINTS ('• ') with INDENTED NUMBERED SUB-ITEMS ('  1. ', '  2. ') under each main category:\n"
+            "        • **Applicable Indian Standards & Scope**:\n"
+            "          1. **Primary Standard**: Exact IS code and title (e.g. **IS 1417:2019**, **IS 567:2024**, **IS 876:1992**)\n"
+            "          2. **Scope & Grades**: Specific grades, classes, types, or product coverage\n"
+            "        • **Certification Requirements & Scheme**:\n"
+            "          1. **Marking Requirements**: Mandatory ISI Mark / CRS Mark / HUID 6-digit alphanumeric code\n"
+            "          2. **Relevant Scheme**: Scheme-I (Product Certification), Scheme-IV, CRS, FMCS, Hallmarking, or Laboratory Recognition Scheme (LRS)\n"
+            "          3. **AIR Obligation**: Authorized Indian Representative rules for foreign manufacturers (if applicable)\n"
+            "        • **Testing Procedures & Laboratory Network**:\n"
+            "          1. **Accredited Testing**: Mandatory NABL/BIS-recognized laboratory test reports\n"
+            "          2. **Test Parameters**: Specific physical, chemical, mechanical, or safety test parameters\n"
+            "          3. **Portal Workflow**: Application filing on Manakonline (https://manakonline.in) or CRS (https://crsbis.in)\n"
+            "        • **Technical Parameters & Limits**:\n"
+            "          1. **Quantitative Thresholds**: State exact numeric limits, capacities, tolerances, and test values\n"
+            "          2. **Dedicated Amendment Status**: State 'Dedicated Amendment Available: Amendment No. X' OR 'No Dedicated Amendment Released'\n"
+            "   - Only pure conversational greetings (e.g. 'hello', 'hi') should be plain text without bullets.\n\n"
+            "5. ACTIONABLE ROUTING (next_step):\n"
+            "   - Always provide the direct official portal in next_step: Manakonline (https://manakonline.in), CRS (https://crsbis.in), or BIS Care App.\n"
+            "   - If the user explicitly requested 'pdf', 'dossier', or 'full research', state in next_step: 'Your official BIS Compliance Research Dossier (PDF) has been compiled. Click \"📄 Download Research PDF\" below to save the official document.'\n"
+            "     Otherwise, do not mention PDF download.\n\n"
+            "Chat history:\n{chat_history}\n\nContext:\n{context}"
+        )
 
+    def _parse_fallback_response(self, text_content: str, query: str) -> BISResponse:
+        """Parse raw text output into structured BISResponse."""
+        if text_content.startswith("{") or "```json" in text_content or "```" in text_content:
+            try:
+                json_str = text_content
+                if "```json" in json_str:
+                    json_str = json_str.split("```json")[1].split("```")[0].strip()
+                elif "```" in json_str:
+                    json_str = json_str.split("```")[1].split("```")[0].strip()
+                import json
+                parsed_json = json.loads(json_str)
+                if isinstance(parsed_json, dict) and "core_response" in parsed_json:
+                    return BISResponse(**{k: parsed_json[k] for k in BISResponse.model_fields if k in parsed_json})
+            except Exception:
+                pass
 
+        is_codes = re.findall(r"\bIS\s*:?\s*\d{3,5}(?:\s*\([^)]+\))?(?::\d{4})?\b", text_content, re.IGNORECASE)
+        unique_standards = list(dict.fromkeys(is_codes))
 
+        return BISResponse(
+            core_response=text_content,
+            applicable_standards=unique_standards,
+            source_citation="BIS Official Documentation / Local Knowledge Base",
+            next_step="Visit official Manakonline portal (https://manakonline.in) for online registration.",
+            follow_up_prompt="Would you like details on testing parameters or fee structures?",
+            intent_localized="सामान्य परामर्श" if any("\u0900" <= c <= "\u097F" for c in query) else "General Consultation"
+        )
 
-                "5. INDIAN STANDARDS (IS CODE) IDENTIFICATION:\n"
-                "   - When queried about a specific IS code (e.g. 'IS 567', 'IS 12269', 'IS 4984', 'IS 12701'), use your authoritative BIS knowledge to identify the official standard title, product subject, and scope if scrape results are partial. Clearly guide the user on how to access the official standard on Manakonline.\n\n"
-                "6. MANDATORY QUANTITATIVE & PARAMETER EXTRACTION (CRITICAL):\n"
-                "   - If the user asks for specific technical parameters, maximum/minimum limits, capacities, dimensions, tolerances, or chemical/physical test thresholds (e.g., maximum capacity limit of 10,000 Litres and overall chemical migration limit of 60 mg/l max for IS 12701 polyethylene water storage tanks), YOU MUST EXTRACT AND STATE THE EXACT NUMBERS, VALUES, AND UNITS IN YOUR core_response.\n"
-                "   - FORMATTING WITH MARKDOWN TABLES: Whenever comparing multiple grades, karats, sizes, or technical thresholds, format them as clean Markdown tables (| Grade / Parameter | Purity / Limit | Standard |).\n"
-                "   - DO NOT play it too safe or dodge by telling the user to 'refer to the portal' or stating that 'tests exist' without giving the numbers. Always state the exact quantitative numbers, limits, and technical values first in core_response, and provide the portal URL in next_step as an actionable follow-up.\n\n"
-                "7. PDF & COMPREHENSIVE RESEARCH DOSSIER GENERATION:\n"
-                "   - When the user explicitly asks for a 'pdf', 'dossier', 'full compliance', or 'full research' (e.g. 'give me a pdf', 'download as pdf', 'give full compliance', 'full research'):\n"
-                "     * Deliver the complete, comprehensive research breakdown covering all relevant IS standards, technical parameters, and licensing procedures in core_response.\n"
-                "     * In next_step, clearly state: 'Your official BIS Compliance Research Dossier (PDF) has been compiled. Click the \"📄 Download Research PDF\" button below to save the official document.'\n"
-                "     * Ensure all applicable IS standards and quantitative limits are listed completely.\n"
-                "   - For normal queries where the user did NOT ask for a PDF, full compliance, or full research, DO NOT mention or offer PDF download in next_step.\n\n"
-                "Chat history:\n{chat_history}\n\nContext:\n{context}"
-            )
-
+    def stream_synthesize(
+        self,
+        chat_history: str,
+        context: str,
+        query: str,
+        is_chat: bool,
+        state: Optional[AgentState] = None,
+    ):
+        """
+        Stream LLM synthesis tokens progressively as they are generated.
+        Yields:
+          {"type": "token", "token": str}
+        and finishes with:
+          {"type": "final_output", "output": BISResponse}
+        """
+        system_prompt = self._build_system_prompt(is_chat)
         prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", "{query}")])
         msg = prompt.format_messages(chat_history=chat_history, context=context, query=query)
-        raw_res = self.structured_response_llm.invoke(msg)
-        if isinstance(raw_res, dict) and "raw" in raw_res:
-            self.token_tracker.add_llm_usage(getattr(raw_res["raw"], "usage_metadata", None))
-            parsed = raw_res.get("parsed")
-            if isinstance(parsed, BISResponse):
-                return parsed
-        elif isinstance(raw_res, BISResponse):
-            return raw_res
-        return BISResponse(core_response=str(raw_res))
+        llm = self._get_llm_for_state(state)
+
+        final_output = None
+        prev_text = ""
+
+        # 1. Try structured streaming
+        try:
+            structured_llm = llm.with_structured_output(BISResponse)
+            for chunk in structured_llm.stream(msg):
+                if isinstance(chunk, BISResponse):
+                    curr_text = chunk.core_response or ""
+                    delta = curr_text[len(prev_text):]
+                    if delta:
+                        yield {"type": "token", "token": delta}
+                        prev_text = curr_text
+                    final_output = chunk
+                elif isinstance(chunk, dict):
+                    curr_text = chunk.get("core_response", "") or ""
+                    delta = curr_text[len(prev_text):]
+                    if delta:
+                        yield {"type": "token", "token": delta}
+                        prev_text = curr_text
+        except Exception as exc:
+            logger.info("Structured streaming fallback to text stream: %s", exc)
+            final_output = None
+
+        if final_output is not None:
+            if not prev_text and final_output.core_response:
+                yield {"type": "token", "token": final_output.core_response}
+            self.token_tracker.add_llm_usage({
+                "prompt_tokens": len(str(msg)) // 4,
+                "completion_tokens": len(final_output.core_response) // 4,
+                "total_tokens": (len(str(msg)) + len(final_output.core_response)) // 4,
+            })
+            yield {"type": "final_output", "output": final_output}
+            return
+
+        # 2. Fallback: text streaming
+        full_text = ""
+        try:
+            for chunk in llm.stream(msg):
+                delta = ""
+                if isinstance(chunk.content, str):
+                    delta = chunk.content
+                elif isinstance(chunk.content, list):
+                    for block in chunk.content:
+                        if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                            delta += block["text"]
+                if delta:
+                    full_text += delta
+                    yield {"type": "token", "token": delta}
+        except Exception as exc:
+            logger.error("Text stream error: %s", exc)
+
+        parsed_res = self._parse_fallback_response(full_text, query)
+        self.token_tracker.add_llm_usage({
+            "prompt_tokens": len(str(msg)) // 4,
+            "completion_tokens": len(full_text) // 4,
+            "total_tokens": (len(str(msg)) + len(full_text)) // 4,
+        })
+        yield {"type": "final_output", "output": parsed_res}
+
+    @with_retry()
+    def _synthesize(self, chat_history: str, context: str, query: str, is_chat: bool, state: Optional[AgentState] = None) -> BISResponse:
+        system_prompt = self._build_system_prompt(is_chat)
+        prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", "{query}")])
+        msg = prompt.format_messages(chat_history=chat_history, context=context, query=query)
+        llm = self._get_llm_for_state(state)
+
+        # 1. Try structured output if supported by model
+        try:
+            structured_llm = llm.with_structured_output(BISResponse, include_raw=True)
+            raw_res = structured_llm.invoke(msg)
+            if isinstance(raw_res, dict) and "raw" in raw_res:
+                self.token_tracker.add_llm_usage(getattr(raw_res["raw"], "usage_metadata", None))
+                parsed = raw_res.get("parsed")
+                if isinstance(parsed, BISResponse):
+                    return parsed
+            elif isinstance(raw_res, BISResponse):
+                return raw_res
+        except Exception as exc:
+            logger.info("Structured response output unavailable (%s). Using raw text invocation fallback.", exc)
+
+        # 2. Fallback: Direct invocation for local Ollama / models without structured output
+        resp = llm.invoke(msg)
+        self.token_tracker.add_llm_usage(getattr(resp, "usage_metadata", None))
+        text_content = str(resp.content).strip()
+        return self._parse_fallback_response(text_content, query)
 
     def synthesize_response(self, state: AgentState) -> dict:
         """Produce unified JSON response with multi-key caching."""
@@ -455,6 +580,7 @@ CRITICAL: Any product name mention defaults to catalog_search."""),
                 state.get("retrieved_context", ""),
                 state["standalone_query"],
                 is_chat,
+                state=state,
             )
         except Exception as exc:
             logger.error("Synthesis error: %s", exc)

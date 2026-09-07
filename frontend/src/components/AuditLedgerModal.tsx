@@ -7,13 +7,15 @@ import { getApiUrl } from '../config';
 interface AuditLedgerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  theme?: 'light' | 'dark';
 }
 
-export const AuditLedgerModal: React.FC<AuditLedgerModalProps> = ({ isOpen, onClose }) => {
+export const AuditLedgerModal: React.FC<AuditLedgerModalProps> = ({ isOpen, onClose, theme = 'light' }) => {
   const [logs, setLogs] = useState<AuditLogRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<AuditLogRecord | null>(null);
+  const isDark = theme === 'dark';
 
   const fetchLogs = async () => {
     setIsLoading(true);
@@ -46,18 +48,18 @@ export const AuditLedgerModal: React.FC<AuditLedgerModalProps> = ({ isOpen, onCl
   );
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(19, 19, 20, 0.88)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '32px' }}>
-      <div style={{ background: 'var(--gemini-bg-card)', border: '1px solid var(--glass-border)', borderRadius: '24px', width: '1000px', height: '85vh', display: 'flex', flexDirection: 'column', gap: '20px', padding: '24px', position: 'relative' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' }}>
+      <div className="animate-fade-in modal-responsive-card" style={{ background: isDark ? '#1E1F20' : '#FFFFFF', border: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid var(--glass-border)', borderRadius: '24px', width: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: '20px', padding: '24px', position: 'relative', boxShadow: isDark ? '0 25px 60px rgba(0, 0, 0, 0.6)' : '0 20px 45px -10px rgba(0, 0, 0, 0.15)' }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ padding: '10px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' }}>
+            <div style={{ padding: '10px', borderRadius: '50%', background: isDark ? 'rgba(217, 119, 6, 0.2)' : '#FEF3C7', color: '#F59E0B' }}>
               <Key size={24} />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#FFFFFF' }}>Immutable Supabase Audit Ledger</h2>
-                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid rgba(245, 158, 11, 0.4)', color: '#F59E0B', fontWeight: 700, textTransform: 'uppercase' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)' }}>Immutable Supabase Audit Ledger</h2>
+                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: isDark ? 'rgba(217, 119, 6, 0.2)' : '#FEF3C7', border: '1px solid #FDE68A', color: '#F59E0B', fontWeight: 700, textTransform: 'uppercase' }}>
                   Admin / Officer Restricted
                 </span>
               </div>
@@ -70,42 +72,42 @@ export const AuditLedgerModal: React.FC<AuditLedgerModalProps> = ({ isOpen, onCl
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
               onClick={fetchLogs}
-              style={{ padding: '8px 16px', borderRadius: '20px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid var(--glass-border)', color: 'var(--text-subtle)', fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              style={{ background: isDark ? '#282A2C' : '#FFFFFF', border: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid var(--glass-border)', color: isDark ? '#E2E8F0' : 'var(--text-subtle)', borderRadius: '50%', padding: '8px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}
+              title="Refresh Audit Logs"
             >
-              <RefreshCw size={14} className={isLoading ? 'gemini-pulse' : ''} />
-              Refresh
+              <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
             </button>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-              <X size={22} />
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '6px' }}>
+              <X size={20} />
             </button>
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--gemini-bg-main)', border: '1px solid var(--glass-border)', borderRadius: '20px', padding: '10px 18px' }}>
-          <Search size={18} color="var(--text-muted)" />
+        {/* Search */}
+        <div style={{ background: isDark ? '#131314' : '#F8FAFC', border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid var(--glass-border)', borderRadius: '12px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Search size={16} color="var(--text-muted)" />
           <input
             type="text"
-            placeholder="Search by User Query, Session ID, or Intent..."
+            placeholder="Search logs by query text, session ID, or intent category..."
             value={searchFilter}
             onChange={(e) => setSearchFilter(e.target.value)}
-            style={{ background: 'none', border: 'none', outline: 'none', color: '#FFF', fontSize: '0.88rem', width: '100%' }}
+            style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--text-main)', fontSize: '0.88rem', width: '100%' }}
           />
         </div>
 
 
         {/* Table & Detail Split */}
-        <div style={{ flex: 1, display: 'flex', gap: '16px', overflow: 'hidden' }}>
+        <div className="modal-grid-2col" style={{ flex: 1, display: 'flex', gap: '16px', overflow: 'hidden' }}>
           {/* Logs List Table */}
-          <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--glass-border)', borderRadius: '12px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid var(--glass-border)', borderRadius: '12px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
               <thead>
-                <tr style={{ background: 'rgba(30, 41, 59, 0.6)', color: 'var(--text-muted)', borderBottom: '1px solid var(--glass-border)' }}>
-                  <th style={{ padding: '12px 14px' }}>Timestamp</th>
-                  <th style={{ padding: '12px 14px' }}>Session ID</th>
-                  <th style={{ padding: '12px 14px' }}>User Query</th>
-                  <th style={{ padding: '12px 14px' }}>Cache</th>
-                  <th style={{ padding: '12px 14px' }}>Latency</th>
+                <tr style={{ background: isDark ? '#131314' : '#F1F5F9', color: 'var(--text-main)', borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid var(--glass-border)' }}>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>Timestamp</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>Session ID</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>User Query</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>Cache</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>Latency</th>
                 </tr>
               </thead>
               <tbody>
@@ -123,21 +125,21 @@ export const AuditLedgerModal: React.FC<AuditLedgerModalProps> = ({ isOpen, onCl
                         key={log.interaction_id}
                         onClick={() => setSelectedRecord(log)}
                         style={{
-                          borderBottom: '1px solid var(--glass-border)',
-                          background: isSelected ? 'rgba(245, 158, 11, 0.12)' : 'transparent',
+                          borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid var(--glass-border)',
+                          background: isSelected ? (isDark ? 'rgba(217, 119, 6, 0.25)' : '#FEF3C7') : 'transparent',
                           cursor: 'pointer',
                         }}
                       >
                         <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }} className="mono">
                           {log.timestamp_utc ? new Date(log.timestamp_utc).toLocaleTimeString() : 'N/A'}
                         </td>
-                        <td style={{ padding: '12px 14px', color: '#06B6D4', fontWeight: 600 }}>{log.session_id}</td>
-                        <td style={{ padding: '12px 14px', color: '#FFF', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <td style={{ padding: '12px 14px', color: '#0284C7', fontWeight: 600 }}>{log.session_id}</td>
+                        <td style={{ padding: '12px 14px', color: 'var(--text-main)', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {log.user_query}
                         </td>
                         <td style={{ padding: '12px 14px' }}>
                           {log.cache_hit ? (
-                            <span style={{ color: '#F59E0B', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ color: '#B45309', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               <Zap size={13} /> ⚡ 0 Tokens
                             </span>
                           ) : (
@@ -157,41 +159,41 @@ export const AuditLedgerModal: React.FC<AuditLedgerModalProps> = ({ isOpen, onCl
 
           {/* Selected Record SHA-256 Inspector */}
           {selectedRecord && (
-            <div className="glass-panel" style={{ width: '380px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
-              <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#F59E0B' }}>Cryptographic SHA-256 Verification</h4>
+            <div className="glass-panel" style={{ width: '380px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto', background: isDark ? '#131314' : '#F8FAFC', border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid var(--glass-border)' }}>
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#B45309' }}>Cryptographic SHA-256 Verification</h4>
               
               <div style={{ fontSize: '0.78rem' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Interaction ID:</span>
-                <div className="mono" style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '6px', borderRadius: '6px', color: '#06B6D4', marginTop: '4px', wordBreak: 'break-all' }}>
+                <div className="mono" style={{ background: isDark ? '#1E1F20' : '#FFFFFF', border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid var(--glass-border)', padding: '6px', borderRadius: '6px', color: '#0284C7', marginTop: '4px', wordBreak: 'break-all' }}>
                   {selectedRecord.interaction_id}
                 </div>
               </div>
 
               <div style={{ fontSize: '0.78rem' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Prompt SHA-256 Hash:</span>
-                <div className="mono" style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '6px', borderRadius: '6px', color: '#10B981', marginTop: '4px', wordBreak: 'break-all' }}>
+                <div className="mono" style={{ background: isDark ? '#1E1F20' : '#FFFFFF', border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid var(--glass-border)', padding: '6px', borderRadius: '6px', color: '#059669', marginTop: '4px', wordBreak: 'break-all' }}>
                   {selectedRecord.prompt_sha256 || 'N/A'}
                 </div>
               </div>
 
               <div style={{ fontSize: '0.78rem' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Payload SHA-256 Hash:</span>
-                <div className="mono" style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '6px', borderRadius: '6px', color: '#F59E0B', marginTop: '4px', wordBreak: 'break-all' }}>
+                <div className="mono" style={{ background: isDark ? '#1E1F20' : '#FFFFFF', border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid var(--glass-border)', padding: '6px', borderRadius: '6px', color: '#B45309', marginTop: '4px', wordBreak: 'break-all' }}>
                   {selectedRecord.payload_sha256 || 'N/A'}
                 </div>
               </div>
 
               <div style={{ fontSize: '0.78rem' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Detected Intent:</span>
-                <div style={{ fontWeight: 600, color: '#FFF', marginTop: '4px' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-main)', marginTop: '4px' }}>
                   {selectedRecord.intent || 'N/A'}
                 </div>
               </div>
 
               <div style={{ fontSize: '0.78rem' }}>
                 <span style={{ color: 'var(--text-muted)' }}>LLM Model Checkpoint:</span>
-                <div style={{ fontWeight: 600, color: '#06B6D4', marginTop: '4px' }}>
-                  {selectedRecord.model_checkpoint || 'gemini-3.5-flash-lite'}
+                <div style={{ fontWeight: 600, color: '#0284C7', marginTop: '4px' }}>
+                  {selectedRecord.model_checkpoint || 'gemini-3.5-flash'}
                 </div>
               </div>
             </div>

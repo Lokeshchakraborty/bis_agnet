@@ -26,14 +26,20 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="BIS Agentic RAG Assistant REST API Server")
     parser.add_argument(
         "--host",
-        default="127.0.0.1",
-        help="Host IP address to bind (default: 127.0.0.1)",
+        default=CONFIG.host,
+        help=f"Host IP address to bind (default: {CONFIG.host})",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="Port number to bind (default: 8000)",
+        default=CONFIG.port,
+        help=f"Port number to bind (default: {CONFIG.port})",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=CONFIG.workers,
+        help=f"Number of worker processes for production (default: {CONFIG.workers})",
     )
     parser.add_argument(
         "--reload",
@@ -43,14 +49,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def display_server_banner(host: str, port: int) -> None:
+def display_server_banner(host: str, port: int, workers: int) -> None:
     """Print styled startup banner for REST API."""
     docs_url = f"http://{host}:{port}/docs"
     banner_text = (
-        "[bold green]BIS Agentic RAG REST API Server[/bold green]\n"
+        "[bold green]BIS Agentic RAG REST API Server (Production Ready)[/bold green]\n"
         f"[cyan]Server Address:[/cyan] http://{host}:{port}\n"
         f"[cyan]Swagger Docs:[/cyan] [link={docs_url}]{docs_url}[/link]\n"
-        f"[dim]LLM Model: {CONFIG.llm_model} | Embedding: {CONFIG.embedding_provider}[/dim]"
+        f"[dim]LLM Model: {CONFIG.llm_model} | Embedding: {CONFIG.embedding_provider} | Workers: {workers}[/dim]"
     )
     console.print(Panel.fit(banner_text, border_style="green"))
 
@@ -59,15 +65,23 @@ def main() -> None:
     """Validate environment and launch Uvicorn web server."""
     validate_environment()
     args = parse_args()
-    display_server_banner(args.host, args.port)
+    display_server_banner(args.host, args.port, args.workers)
 
-    uvicorn.run(
-        "app:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-        log_level=CONFIG.log_level.lower(),
-    )
+    run_kwargs = {
+        "app": "app:app",
+        "host": args.host,
+        "port": args.port,
+        "log_level": CONFIG.log_level.lower(),
+        "proxy_headers": True,
+        "forwarded_allow_ips": "*",
+    }
+
+    if args.reload:
+        run_kwargs["reload"] = True
+    elif args.workers > 1:
+        run_kwargs["workers"] = args.workers
+
+    uvicorn.run(**run_kwargs)
 
 
 if __name__ == "__main__":
