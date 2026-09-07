@@ -1,19 +1,8 @@
 # =============================================================================
-# Bureau of Indian Standards (BIS) Agentic RAG Assistant - Production Dockerfile
-# Multi-Stage Build: Builds Vite React Frontend + Serves via Python FastAPI Backend
+# Bureau of Indian Standards (BIS) Agentic RAG Assistant - Backend Dockerfile
+# Serves FastAPI Backend & Agent Services
 # =============================================================================
 
-# --- Stage 1: Build React Frontend ---
-FROM node:20-alpine AS frontend-builder
-WORKDIR /app/frontend
-
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
-
-COPY frontend/ ./
-RUN npm run build
-
-# --- Stage 2: Python Backend Environment ---
 FROM python:3.11-slim AS runner
 WORKDIR /app
 
@@ -37,9 +26,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source code
 COPY . .
-
-# Copy built frontend dist from Stage 1 into /app/frontend/dist
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Expose default port
 EXPOSE 8000
