@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   X, User, Key, CheckCircle2, AlertCircle,
   Loader2, Cpu, Zap, Eye, EyeOff, RefreshCw, Flame,
-  Sun, Moon, Palette
+  Sun, Moon, Palette, Sparkles, Bot, Wind, Boxes, Network, Terminal, Globe, Server, Layers
 } from 'lucide-react';
 import type { UserProfile, QueryResponse } from '../types';
 import { getApiUrl } from '../config';
@@ -30,76 +30,130 @@ interface UserAccountUsage {
 interface ProviderOption {
   id: string;
   name: string;
-  icon: string;
   badge: string;
   models: string[];
   defaultBaseUrl: string;
   keyPlaceholder: string;
+  description: string;
 }
+
+const renderProviderIcon = (id: string, size = 18) => {
+  switch (id) {
+    case 'gemini':
+      return <Sparkles size={size} />;
+    case 'openai':
+      return <Bot size={size} />;
+    case 'claude':
+      return <Cpu size={size} />;
+    case 'groq':
+      return <Zap size={size} />;
+    case 'huggingface':
+      return <Boxes size={size} />;
+    case 'omniroute':
+      return <Network size={size} />;
+    case 'mistral':
+      return <Wind size={size} />;
+    case 'deepseek':
+      return <Terminal size={size} />;
+    case 'openrouter':
+      return <Globe size={size} />;
+    case 'ollama':
+      return <Server size={size} />;
+    default:
+      return <Layers size={size} />;
+  }
+};
 
 const PROVIDER_OPTIONS: ProviderOption[] = [
   {
     id: 'gemini',
     name: 'Google Gemini',
-    icon: '✦',
-    badge: 'Official',
-    models: ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-flash-latest', 'gemini-pro-latest'],
+    badge: 'Gemini Flash / Pro',
+    models: ['gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-pro-latest', 'gemini-3.7-flash'],
     defaultBaseUrl: '',
     keyPlaceholder: 'Enter Gemini API Key (or leave empty for server default)...',
+    description: 'Ultra-fast multimodal reasoning and regulatory synthesis',
   },
   {
     id: 'openai',
     name: 'OpenAI',
-    icon: '🤖',
-    badge: 'GPT-4o',
-    models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini', 'gpt-4-turbo'],
+    badge: 'GPT-4.5 / o3',
+    models: ['gpt-4.5-preview', 'gpt-4o', 'gpt-4o-mini', 'o3-mini', 'o1', 'o1-mini'],
     defaultBaseUrl: '',
-    keyPlaceholder: 'sk-...',
-  },
-  {
-    id: 'mistral',
-    name: 'Mistral AI',
-    icon: '🌪️',
-    badge: 'Mistral',
-    models: ['mistral-large-latest', 'mistral-small-latest', 'open-mixtral-8x22b', 'codestral-latest'],
-    defaultBaseUrl: '',
-    keyPlaceholder: 'Enter Mistral API Key...',
+    keyPlaceholder: 'sk-proj-... or sk-...',
+    description: 'SOTA reasoning and structured schema generation',
   },
   {
     id: 'claude',
     name: 'Anthropic Claude',
-    icon: '🧠',
-    badge: 'Claude 3.5',
-    models: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+    badge: 'Claude 3.7',
+    models: ['claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
     defaultBaseUrl: '',
     keyPlaceholder: 'sk-ant-...',
+    description: 'Rigorous legal analysis and safety-aligned reasoning',
   },
   {
-    id: 'openrouter',
-    name: 'OpenRouter',
-    icon: '🌐',
-    badge: 'Multi-LLM',
-    models: ['anthropic/claude-3.5-sonnet', 'deepseek/deepseek-r1', 'deepseek/deepseek-chat', 'meta-llama/llama-3.3-70b-instruct', 'qwen/qwen-2.5-72b-instruct'],
-    defaultBaseUrl: 'https://openrouter.ai/api/v1',
-    keyPlaceholder: 'sk-or-...',
+    id: 'groq',
+    name: 'Groq',
+    badge: 'LPU Ultra-Fast',
+    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'deepseek-r1-distill-llama-70b', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+    defaultBaseUrl: '',
+    keyPlaceholder: 'gsk_...',
+    description: 'Sub-second real-time token streaming via LPUs',
+  },
+  {
+    id: 'huggingface',
+    name: 'Hugging Face',
+    badge: 'Serverless Router',
+    models: ['meta-llama/Llama-3.3-70B-Instruct', 'deepseek-ai/DeepSeek-R1', 'Qwen/Qwen2.5-72B-Instruct', 'mistralai/Mistral-7B-Instruct-v0.3', 'meta-llama/Llama-3.1-8B-Instruct'],
+    defaultBaseUrl: 'https://router.huggingface.co/hf-inference/v1',
+    keyPlaceholder: 'hf_... (Hugging Face User Access Token)',
+    description: 'Direct serverless inference on open-weights model hub',
+  },
+  {
+    id: 'omniroute',
+    name: 'OmniRoute',
+    badge: 'Smart Gateway',
+    models: ['meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-r1', 'openai/gpt-4o', 'anthropic/claude-3.5-sonnet', 'mistral/mistral-large'],
+    defaultBaseUrl: 'https://api.omniroute.ai/v1',
+    keyPlaceholder: 'omni-... (OmniRoute API Key)',
+    description: 'Intelligent multi-model proxy and dynamic routing gateway',
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral AI',
+    badge: 'Mistral Large',
+    models: ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest', 'pixtral-large-latest', 'open-mistral-nemo'],
+    defaultBaseUrl: '',
+    keyPlaceholder: 'Enter Mistral API Key...',
+    description: 'Efficient European foundation models and code intelligence',
   },
   {
     id: 'deepseek',
     name: 'DeepSeek',
-    icon: '⚡',
-    badge: 'Reasoner',
+    badge: 'R1 Reasoner',
     models: ['deepseek-chat', 'deepseek-reasoner'],
     defaultBaseUrl: 'https://api.deepseek.com',
     keyPlaceholder: 'sk-...',
+    description: 'Advanced mathematical and structured logic inference',
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    badge: 'Multi-LLM Hub',
+    models: ['anthropic/claude-3.7-sonnet', 'anthropic/claude-3.5-sonnet', 'deepseek/deepseek-r1', 'meta-llama/llama-3.3-70b-instruct', 'openai/gpt-4o'],
+    defaultBaseUrl: 'https://openrouter.ai/api/v1',
+    keyPlaceholder: 'sk-or-...',
+    description: 'Universal unified gateway routing across 100+ global models',
   },
   {
     id: 'ollama',
     name: 'Ollama (Local)',
-    icon: '🦙',
     badge: 'Local / $0 Cost',
-    models: ['llama3.2', 'llama3.1', 'mistral', 'qwen2.5', 'phi4', 'gemma2', 'deepseek-r1:8b'],
+    models: ['llama3.3', 'llama3.2', 'llama3.1', 'deepseek-r1:8b', 'qwen2.5', 'mistral', 'phi4'],
     defaultBaseUrl: 'http://localhost:11434',
     keyPlaceholder: 'No API key required for local Ollama',
+    description: 'Zero-data-leakage on-premise private AI execution',
   },
 ];
 
@@ -117,7 +171,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   // Dynamic Model State
   const [selectedProvider, setSelectedProvider] = useState<string>('gemini');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.5-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.5-flash-lite');
   const [apiKey, setApiKey] = useState<string>('');
   const [baseUrl, setBaseUrl] = useState<string>('');
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
@@ -163,10 +217,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     if (currentUser) {
       const p = currentUser.llm_provider || 'gemini';
       setSelectedProvider(p);
-      let m = currentUser.llm_model || 'gemini-3.5-flash';
-      if (m.startsWith('gemini-2.5') || m.startsWith('gemini-2.0') || m.startsWith('gemini-1.5') || m.startsWith('gemini-1.0')) {
-        m = 'gemini-3.5-flash';
-      }
+      const m = currentUser.llm_model || 'gemini-3.5-flash-lite';
       setSelectedModel(m);
       setApiKey(currentUser.llm_api_key || '');
       setBaseUrl(currentUser.llm_base_url || '');
@@ -234,6 +285,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   const handleSaveModelConfig = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedModel = selectedModel.trim();
+    if (!trimmedModel) {
+      setModelSaveMessage('Error: Model ID cannot be empty.');
+      return;
+    }
     setIsSavingModel(true);
     setModelSaveMessage('');
     try {
@@ -243,7 +299,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         body: JSON.stringify({
           user_id: currentUser.user_id,
           llm_provider: selectedProvider,
-          llm_model: selectedModel,
+          llm_model: trimmedModel,
           llm_api_key: apiKey.trim(),
           llm_base_url: baseUrl.trim(),
         }),
@@ -257,7 +313,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       const updatedUser: UserProfile = {
         ...currentUser,
         llm_provider: selectedProvider,
-        llm_model: selectedModel,
+        llm_model: trimmedModel,
         llm_api_key: apiKey.trim(),
         llm_base_url: baseUrl.trim(),
       };
@@ -266,10 +322,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         onUpdateUser(updatedUser);
       }
       localStorage.setItem('bis_user', JSON.stringify(updatedUser));
-      setModelSaveMessage('✓ AI Model settings saved and applied to active session!');
+      setModelSaveMessage('AI Model settings saved and applied to active session!');
       setTimeout(() => setModelSaveMessage(''), 3000);
     } catch (err: any) {
-      setModelSaveMessage(`❌ Error: ${err.message}`);
+      setModelSaveMessage(`Error: ${err.message}`);
     } finally {
       setIsSavingModel(false);
     }
@@ -642,7 +698,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', display: 'block' }}>
                 1. Select AI Model Provider
               </label>
-              <div className="modal-provider-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+              <div className="modal-provider-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(115px, 1fr))', gap: '8px' }}>
                 {PROVIDER_OPTIONS.map((prov) => {
                   const isSelected = selectedProvider === prov.id;
                   return (
@@ -651,8 +707,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       type="button"
                       onClick={() => handleProviderChange(prov.id)}
                       style={{
-                        padding: '12px 8px',
-                        borderRadius: '14px',
+                        padding: '10px 6px',
+                        borderRadius: '12px',
                         background: isSelected ? (theme === 'dark' ? 'rgba(37, 99, 235, 0.25)' : '#EFF6FF') : (theme === 'dark' ? '#131314' : '#F8FAFC'),
                         border: isSelected ? '1px solid #2563EB' : '1px solid var(--glass-border)',
                         boxShadow: isSelected ? '0 2px 8px rgba(37, 99, 235, 0.15)' : 'none',
@@ -665,8 +721,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         transition: 'all 0.15s ease',
                       }}
                     >
-                      <span style={{ fontSize: '1.3rem' }}>{prov.icon}</span>
-                      <span style={{ fontSize: '0.8rem', fontWeight: isSelected ? 700 : 500, textAlign: 'center', color: isSelected ? (theme === 'dark' ? '#93C5FD' : '#1D4ED8') : 'inherit' }}>
+                      <div style={{ color: isSelected ? (theme === 'dark' ? '#60A5FA' : '#2563EB') : 'var(--text-muted)' }}>
+                        {renderProviderIcon(prov.id, 20)}
+                      </div>
+                      <span style={{ fontSize: '0.78rem', fontWeight: isSelected ? 700 : 500, textAlign: 'center', color: isSelected ? (theme === 'dark' ? '#93C5FD' : '#1D4ED8') : 'inherit', lineHeight: '1.2' }}>
                         {prov.name}
                       </span>
                     </button>
@@ -675,54 +733,101 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               </div>
             </div>
 
-            {/* Model Selector */}
-            <div className="modal-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
-                  2. Select Model
+            {/* Model Selector & Manual Input */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  2. Select or Type Model ID
                 </label>
-                <select
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: theme === 'dark' ? '#131314' : '#FFFFFF',
-                    border: '1px solid var(--glass-border)',
-                    borderRadius: '12px',
-                    padding: '10px 14px',
-                    color: theme === 'dark' ? '#FFFFFF' : 'var(--text-main)',
-                    fontSize: '0.88rem',
-                    outline: 'none',
-                  }}
-                >
-                  {currentPreset.models.map((m) => (
-                    <option key={m} value={m} style={{ background: theme === 'dark' ? '#1E1F20' : '#FFFFFF', color: theme === 'dark' ? '#FFFFFF' : '#0F172A' }}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                  {currentPreset.badge} • Select preset or enter custom slug
+                </span>
               </div>
 
-              <div>
-                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
-                  Custom Model ID (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Or enter custom model name..."
-                  value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
-                  style={{
-                    width: '100%',
-                    background: theme === 'dark' ? '#131314' : '#FFFFFF',
-                    border: '1px solid var(--glass-border)',
-                    borderRadius: '12px',
-                    padding: '10px 14px',
-                    color: theme === 'dark' ? '#FFFFFF' : 'var(--text-main)',
-                    fontSize: '0.88rem',
-                    outline: 'none',
-                  }}
-                />
+              <div className="modal-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '10px' }}>
+                <div>
+                  <select
+                    value={currentPreset.models.includes(selectedModel) ? selectedModel : 'custom'}
+                    onChange={(e) => {
+                      if (e.target.value !== 'custom') {
+                        setSelectedModel(e.target.value);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      background: theme === 'dark' ? '#131314' : '#FFFFFF',
+                      border: '1px solid var(--glass-border)',
+                      borderRadius: '12px',
+                      padding: '10px 12px',
+                      color: theme === 'dark' ? '#FFFFFF' : 'var(--text-main)',
+                      fontSize: '0.86rem',
+                      outline: 'none',
+                    }}
+                  >
+                    <optgroup label={`${currentPreset.name} Presets`}>
+                      {currentPreset.models.map((m) => (
+                        <option key={m} value={m} style={{ background: theme === 'dark' ? '#1E1F20' : '#FFFFFF', color: theme === 'dark' ? '#FFFFFF' : '#0F172A' }}>
+                          {m}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <option value="custom" style={{ background: theme === 'dark' ? '#1E1F20' : '#FFFFFF', color: theme === 'dark' ? '#93C5FD' : '#2563EB', fontWeight: 600 }}>
+                      Custom / Manual Model ID...
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    placeholder={`e.g. ${currentPreset.models[0] || 'custom-model-id'}`}
+                    value={selectedModel}
+                    onChange={(e) => {
+                      setSelectedModel(e.target.value.trim());
+                      if (modelSaveMessage) setModelSaveMessage('');
+                    }}
+                    style={{
+                      width: '100%',
+                      background: theme === 'dark' ? '#131314' : '#FFFFFF',
+                      border: '1px solid var(--glass-border)',
+                      borderRadius: '12px',
+                      padding: '10px 12px',
+                      color: theme === 'dark' ? '#FFFFFF' : 'var(--text-main)',
+                      fontSize: '0.86rem',
+                      outline: 'none',
+                      fontFamily: 'monospace',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Quick Model Chips */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Quick Select:</span>
+                {currentPreset.models.map((m) => {
+                  const isActive = selectedModel === m;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setSelectedModel(m)}
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '8px',
+                        fontSize: '0.72rem',
+                        fontFamily: 'monospace',
+                        cursor: 'pointer',
+                        border: isActive ? '1px solid #2563EB' : '1px solid var(--glass-border)',
+                        background: isActive ? (theme === 'dark' ? 'rgba(37,99,235,0.3)' : '#DBEAFE') : (theme === 'dark' ? '#1E1F20' : '#F1F5F9'),
+                        color: isActive ? (theme === 'dark' ? '#93C5FD' : '#1E40AF') : 'var(--text-muted)',
+                        fontWeight: isActive ? 700 : 500,
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {m}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -843,16 +948,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             {modelSaveMessage && (
               <div
                 style={{
-                  background: modelSaveMessage.startsWith('✓') ? '#EFF6FF' : '#FEF2F2',
-                  border: `1px solid ${modelSaveMessage.startsWith('✓') ? '#BFDBFE' : '#FECACA'}`,
+                  background: modelSaveMessage.startsWith('Error') ? '#FEF2F2' : '#EFF6FF',
+                  border: `1px solid ${modelSaveMessage.startsWith('Error') ? '#FECACA' : '#BFDBFE'}`,
                   borderRadius: '10px',
                   padding: '10px 14px',
                   fontSize: '0.85rem',
-                  color: modelSaveMessage.startsWith('✓') ? '#1D4ED8' : '#DC2626',
+                  color: modelSaveMessage.startsWith('Error') ? '#DC2626' : '#1D4ED8',
                   fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
                 }}
               >
-                {modelSaveMessage}
+                {modelSaveMessage.startsWith('Error') ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+                <span>{modelSaveMessage}</span>
               </div>
             )}
 
@@ -881,7 +990,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 onMouseEnter={(e) => (e.currentTarget.style.background = theme === 'dark' ? 'rgba(59, 130, 246, 0.25)' : '#DBEAFE')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = theme === 'dark' ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF')}
               >
-                {isTestingConnection ? <Loader2 size={16} className="animate-spin" /> : '⚡ Test Connection'}
+                {isTestingConnection ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                <span>{isTestingConnection ? 'Testing Connection...' : 'Test Connection'}</span>
               </button>
 
               <button
@@ -907,7 +1017,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)')}
               >
-                {isSavingModel ? <Loader2 size={16} className="animate-spin" /> : '✓ Save & Apply Model'}
+                {isSavingModel ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                <span>{isSavingModel ? 'Saving...' : 'Save & Apply Model'}</span>
               </button>
             </div>
           </form>

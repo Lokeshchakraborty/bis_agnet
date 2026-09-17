@@ -41,6 +41,12 @@ Render allows one-click continuous deployment using the included `render.yaml` a
    - Verify health at `/health`.
    - Serve the complete application on HTTPS.
 
+### ⏰ Render Free Tier Anti-Idle (Keep-Alive)
+Render's free tier automatically spins down web services after 15 minutes of inactivity. To prevent this, **BIS SATHI** includes a built-in automated background keep-alive service:
+- **Self-Pinging Loop**: The server automatically pings `/health` every 10 minutes (600s).
+- **Public Router Ping**: It automatically detects `RENDER_EXTERNAL_URL` (injected by Render) and pings the public HTTPS address, ensuring Render's proxy records active traffic.
+- **Diagnostics Endpoint**: Inspect status and metrics anytime at `GET /api/v1/keep-alive` or trigger an immediate ping with `POST /api/v1/keep-alive/trigger`.
+
 ---
 
 ## 🐳 Option 2: Deploy with Docker & Docker Compose (Self-Hosted VPS)

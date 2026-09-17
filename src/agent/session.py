@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Deque, Dict, Tuple,Optional
 
 from src.agent.graph import build_graph
-from src.agent.nodes import _fast_classify, _format_history
+from src.agent.nodes import _fast_classify, _format_history, _is_research_query
 from src.config import CONFIG
 from src.schemas import DOMAIN_COLLECTIONS, AgentState, BISResponse, Intent, TokenTracker
 from src.tools.cache import ResponseCache
@@ -106,8 +106,10 @@ class Session:
                 logger.debug("Failed to schedule Supabase session save: %s", exc)
 
 
-        # 1. Front-Loaded Cache Check: 0 LLM calls, 0 token burn
-        if CONFIG.cache_enabled:
+        is_research = _is_research_query(user_query) or _is_research_query(effective_query)
+
+        # 1. Front-Loaded Cache Check: 0 LLM calls, 0 token burn (bypassed for deep research mode)
+        if CONFIG.cache_enabled and not is_research:
             fast_intent = _fast_classify(user_query)
             intents_to_check = (
                 [fast_intent.value]
@@ -144,6 +146,7 @@ class Session:
                         "llm_model": llm_model,
                         "llm_api_key": llm_api_key,
                         "llm_base_url": llm_base_url,
+                        "is_research": is_research,
                     }
                     get_audit_logger().log_interaction(
                         session_id=session_id,
@@ -162,7 +165,7 @@ class Session:
         # 2. Graph execution
         inputs: AgentState = {
             "query": effective_query,
-            "standalone_query": "",
+            "standalone_query": effective_query,
             "chat_history": list(self.history),
             "intent": "",
             "domain": "",
@@ -175,6 +178,8 @@ class Session:
             "llm_model": llm_model,
             "llm_api_key": llm_api_key,
             "llm_base_url": llm_base_url,
+            "is_research": is_research,
+            "user_id": user_id,
         }
         state = self.app.invoke(inputs)
         output: BISResponse = state["final_output"]
@@ -234,15 +239,20 @@ class Session:
             yield {"type": "error", "message": "Session turn cap exceeded."}
             return
 
-        yield {"type": "status", "message": "Classifying intent & IS standard codes..."}
-
         effective_query = user_query
         if self.active_product_context and len(user_query.split()) <= 4:
             effective_query = f"{user_query} (Product Context: {self.active_product_context})"
 
-        # 1. Front-Loaded Cache Check
-        yield {"type": "status", "message": "Checking 0-Token instant response cache..."}
-        if CONFIG.cache_enabled:
+        is_research = _is_research_query(user_query) or _is_research_query(effective_query)
+
+        if is_research:
+            yield {"type": "status", "message": "Initiating deep regulatory compliance & standards research..."}
+        else:
+            yield {"type": "status", "message": "Classifying intent & IS standard codes..."}
+
+        # 1. Front-Loaded Cache Check (bypassed for deep research queries)
+        if CONFIG.cache_enabled and not is_research:
+            yield {"type": "status", "message": "Checking 0-Token instant response cache..."}
             fast_intent = _fast_classify(user_query)
             intents_to_check = (
                 [fast_intent.value]
@@ -280,6 +290,7 @@ class Session:
                         "llm_model": llm_model,
                         "llm_api_key": llm_api_key,
                         "llm_base_url": llm_base_url,
+                        "is_research": is_research,
                     }
                     get_audit_logger().log_interaction(
                         session_id=session_id,
@@ -306,7 +317,7 @@ class Session:
         # 2. Contextualize Query
         yield {"type": "status", "message": "Contextualizing query with active session..."}
         inputs: AgentState = {
-            "query": user_query,
+            "query": effective_query,
             "standalone_query": effective_query,
             "chat_history": list(self.history),
             "intent": "",
@@ -320,6 +331,8 @@ class Session:
             "llm_model": llm_model,
             "llm_api_key": llm_api_key,
             "llm_base_url": llm_base_url,
+            "is_research": is_research,
+            "user_id": user_id,
         }
         state = dict(inputs)
         state.update(self.nodes.contextualize_query(state))
@@ -343,11 +356,14 @@ class Session:
         state.update(ret_res)
 
         # 5. LLM Synthesis with Real-Time Token Streaming
-        yield {"type": "status", "message": "Synthesizing compliance report with IS standards..."}
+        if is_research:
+            yield {"type": "status", "message": "Synthesizing 13-section technical compliance research dossier..."}
+        else:
+            yield {"type": "status", "message": "Synthesizing compliance report with IS standards..."}
         is_chat = state["intent"] == Intent.CHAT.value
         final_output = None
         for evt in self.nodes.stream_synthesize(
-            chat_history=_format_history(state["chat_history"]),
+            chat_history=_format_history(state["chat_history"], condensed=True),
             context=state.get("retrieved_context", ""),
             query=state["standalone_query"],
             is_chat=is_chat,
@@ -368,7 +384,12 @@ class Session:
         try:
             from src.agent.guardrails import validate_and_sanitize_response
             raw_conf = 0.95 if is_chat or len(state.get("retrieved_context", "")) > 50 else 0.65
-            final_output = validate_and_sanitize_response(final_output, state["query"], intent_confidence=raw_conf)
+            final_output = validate_and_sanitize_response(
+                final_output,
+                state["query"],
+                intent_confidence=raw_conf,
+                standalone_query=state.get("standalone_query"),
+            )
         except Exception as exc:
             logger.warning("Guardrails warning during stream: %s", exc)
 
@@ -386,11 +407,12 @@ class Session:
         if CONFIG.cache_enabled and not is_chat and final_output:
             try:
                 payload = {"intent": state["intent"], "domain": state.get("domain", ""), **final_output.model_dump()}
-                key_standalone = self.response_cache.make_key(state["intent"], state["standalone_query"])
+                uid = user_id or "default_user"
+                key_standalone = self.response_cache.make_key(state["intent"], state["standalone_query"], user_id=uid)
                 self.response_cache.set(key_standalone, payload)
                 raw_q = state.get("query", "").strip()
                 if raw_q and len(raw_q.split()) >= 3:
-                    key_raw = self.response_cache.make_key(state["intent"], raw_q)
+                    key_raw = self.response_cache.make_key(state["intent"], raw_q, user_id=uid)
                     self.response_cache.set(key_raw, payload)
             except Exception:
                 pass

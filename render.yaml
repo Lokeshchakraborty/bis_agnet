@@ -27,3 +27,8 @@ services:
         value: 0.0.0.0
       - key: PORT
         value: 8000
+      - key: KEEP_ALIVE_ENABLED
+        value: "true"
+      - key: KEEP_ALIVE_INTERVAL_SECONDS
+        value: "600"
+

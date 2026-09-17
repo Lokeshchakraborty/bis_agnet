@@ -4,15 +4,15 @@ BIS SATHI - Compliance Research PDF Generator
 Generates authoritative, beautifully styled Bureau of Indian Standards (BIS)
 Technical Compliance & Research Dossiers using ReportLab.
 """
-from __future__ import annotations
 
+from __future__ import annotations
+import html
 import hashlib
 import io
 import logging
 import re
 import time
 from typing import List, Optional
-
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import letter
@@ -93,8 +93,12 @@ def _sanitize_markdown_for_reportlab(text: str) -> str:
     """Convert common markdown markers into clean HTML/XML tags supported by ReportLab."""
     if not text:
         return ""
+    # Normalize <br> or <br > to self-closing <br/> for ReportLab XML parser
+    clean = re.sub(r"<br\s*/?>", "<br/>", text, flags=re.IGNORECASE)
+    # Convert markdown links: [label](url) -> <font color='#2563eb'><u>label</u></font>
+    clean = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"<font color='#2563eb'><u>\1</u></font>", clean)
     # Bold **text** -> <b>text</b>
-    clean = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    clean = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", clean)
     # Italic *text* or _text_ -> <i>text</i>
     clean = re.sub(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", r"<i>\1</i>", clean)
     # Inline code `text` -> <font name='Courier'>text</font>
@@ -102,6 +106,92 @@ def _sanitize_markdown_for_reportlab(text: str) -> str:
     # Escape standalone ampersands not part of HTML entities
     clean = re.sub(r"&(?!(?:amp|lt|gt|quot|apos);)", "&amp;", clean)
     return clean
+
+
+def _safe_paragraph(text: str, style: ParagraphStyle) -> Paragraph:
+    """Safely construct a ReportLab Paragraph, falling back to clean escaped text if XML parsing fails."""
+    import html as _html
+    # Ensure any <br> tags are self-closing
+    safe_text = re.sub(r"<br\s*/?>", "<br/>", text, flags=re.IGNORECASE)
+    try:
+        return Paragraph(safe_text, style)
+    except Exception as e:
+        logger.warning("ReportLab failed to parse formatted text: %r. Falling back to plain text. Error: %s", safe_text[:80], e)
+        # Strip all HTML-like tags and escape
+        plain = re.sub(r"<[^>]+>", "", safe_text)
+        return Paragraph(_html.escape(plain), style)
+
+
+def _parse_markdown_table(table_lines: List[str], header_style: ParagraphStyle, cell_style: ParagraphStyle) -> Optional[Table]:
+    """Parse consecutive markdown table lines into a styled ReportLab Table flowable."""
+    if not table_lines:
+        return None
+
+    raw_rows = []
+    for l in table_lines:
+        clean_l = l.strip()
+        if not clean_l:
+            continue
+        # Skip delimiter rows e.g. |---|:---|
+        if re.match(r"^\|?[\s\-:|]+\|?$", clean_l):
+            continue
+        cells = [c.strip() for c in clean_l.split("|")]
+        # Remove leading/trailing empty cells from outer pipes
+        if clean_l.startswith("|") and len(cells) > 1:
+            cells = cells[1:]
+        if clean_l.endswith("|") and cells and cells[-1] == "":
+            cells = cells[:-1]
+        if cells:
+            raw_rows.append(cells)
+
+    if not raw_rows:
+        return None
+
+    num_cols = max(len(r) for r in raw_rows)
+    if num_cols == 0:
+        return None
+
+    # Standardize column count across all rows
+    for r in raw_rows:
+        while len(r) < num_cols:
+            r.append("")
+
+    table_data = []
+    for r_idx, row in enumerate(raw_rows):
+        is_header = (r_idx == 0)
+        formatted_row = []
+        for cell_text in row:
+            sanitized = _sanitize_markdown_for_reportlab(cell_text)
+            st = header_style if is_header else cell_style
+            formatted_row.append(_safe_paragraph(sanitized, st))
+        table_data.append(formatted_row)
+
+    total_width = 504.0
+    if num_cols == 4:
+        col_widths = [110, 110, 110, 174]
+    elif num_cols == 3:
+        col_widths = [120, 130, 254]
+    elif num_cols == 2:
+        col_widths = [180, 324]
+    else:
+        col_w = total_width / num_cols
+        col_widths = [col_w] * num_cols
+
+    t = Table(table_data, colWidths=col_widths)
+    t.setStyle(
+        TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), COLOR_PRIMARY),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("BOX", (0, 0), (-1, -1), 0.5, COLOR_BORDER),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, COLOR_BORDER),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, COLOR_BG_LIGHT]),
+        ])
+    )
+    return t
 
 
 def generate_compliance_pdf(
@@ -119,7 +209,11 @@ def generate_compliance_pdf(
     Returns:
         BytesIO buffer containing the compiled binary PDF document.
     """
-    applicable_standards = applicable_standards or []
+    applicable_standards = list(applicable_standards or [])
+    from src.agent.guardrails import clean_leaked_system_blocks
+    core_response, extra_stds = clean_leaked_system_blocks(core_response)
+    if extra_stds:
+        applicable_standards = list(dict.fromkeys(applicable_standards + extra_stds))
     buffer = io.BytesIO()
 
     # Document Geometry (0.75 in / 54 pt margins)
@@ -164,6 +258,30 @@ def generate_compliance_pdf(
         textColor=COLOR_PRIMARY,
         spaceBefore=14,
         spaceAfter=6,
+        keepWithNext=True,
+    )
+
+    h2_style = ParagraphStyle(
+        "DocH2",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=10.5,
+        leading=14,
+        textColor=COLOR_PRIMARY,
+        spaceBefore=12,
+        spaceAfter=5,
+        keepWithNext=True,
+    )
+
+    h3_style = ParagraphStyle(
+        "DocH3",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9.5,
+        leading=13,
+        textColor=COLOR_SECONDARY,
+        spaceBefore=8,
+        spaceAfter=3,
         keepWithNext=True,
     )
 
@@ -344,35 +462,66 @@ def generate_compliance_pdf(
     # 5. Core Compliance Findings & Technical Specifications
     story.append(Paragraph("3. COMPREHENSIVE COMPLIANCE & TECHNICAL ANALYSIS", section_heading))
 
-    # Process core response text: handle paragraphs, bullet points, sub-items
-    paragraphs = core_response.split("\n\n")
-    for para in paragraphs:
-        para = para.strip()
-        if not para:
+    all_lines = core_response.split("\n")
+    table_buffer: List[str] = []
+
+    def _flush_table():
+        nonlocal table_buffer
+        if table_buffer:
+            t = _parse_markdown_table(table_buffer, table_header_style, table_cell_style)
+            if t:
+                story.append(Spacer(1, 4))
+                story.append(t)
+                story.append(Spacer(1, 6))
+            table_buffer = []
+
+    for line in all_lines:
+        line_str = line.strip()
+
+        # Table detection
+        if line_str.startswith("|") and line_str.endswith("|"):
+            table_buffer.append(line_str)
+            continue
+        else:
+            _flush_table()
+
+        if not line_str:
             continue
 
-        lines = para.split("\n")
-        for line in lines:
-            line_str = line.strip()
-            if not line_str:
-                continue
+        sanitized = _sanitize_markdown_for_reportlab(line_str)
 
-            sanitized = _sanitize_markdown_for_reportlab(line_str)
+        # Horizontal rules / dividers
+        if re.match(r"^[-*_]{3,}$", line_str):
+            story.append(Spacer(1, 4))
+            story.append(HRFlowable(width="100%", thickness=0.8, color=COLOR_BORDER, spaceBefore=4, spaceAfter=8))
+        # Markdown headings
+        elif line_str.startswith("## "):
+            clean_heading = re.sub(r"^##\s*", "", sanitized)
+            story.append(_safe_paragraph(clean_heading, h2_style))
+        elif line_str.startswith("### "):
+            clean_sub = re.sub(r"^###\s*", "", sanitized)
+            story.append(_safe_paragraph(clean_sub, h3_style))
+        elif line_str.startswith("# "):
+            clean_h1 = re.sub(r"^#\s*", "", sanitized)
+            story.append(_safe_paragraph(clean_h1, section_heading))
+        elif re.match(r"^[-*•]?\s*\[([ xX])\]\s*", line_str):
+            chk = re.match(r"^[-*•]?\s*\[([ xX])\]\s*(.*)", line_str)
+            checked = chk.group(1).lower() == "x" if chk else False
+            item_text = _sanitize_markdown_for_reportlab(chk.group(2) if chk else line_str)
+            box_symbol = "<b>[ &#10003; ]</b>" if checked else "<b>[ &nbsp; ]</b>"
+            story.append(_safe_paragraph(f"{box_symbol} {item_text}", bullet_style))
+        elif line_str.startswith("• **") or line_str.startswith("• ") or line_str.startswith("- ") or line_str.startswith("* "):
+            clean_bullet = re.sub(r"^[•\-*]\s*", "", sanitized)
+            story.append(_safe_paragraph(f"<b>&bull;</b> {clean_bullet}", bullet_style))
+        elif re.match(r"^\d+\.\s+", line_str):
+            clean_num = re.sub(r"^\d+\.\s*", "", sanitized)
+            num_match = re.match(r"^(\d+)\.", line_str)
+            num_val = num_match.group(1) if num_match else "1"
+            story.append(_safe_paragraph(f"<b>{num_val}.</b> {clean_num}", bullet_style))
+        else:
+            story.append(_safe_paragraph(sanitized, body_style))
 
-            if line_str.startswith("• **") or line_str.startswith("• "):
-                clean_bullet = re.sub(r"^•\s*", "", sanitized)
-                story.append(Paragraph(f"<b>&bull;</b> {clean_bullet}", bullet_style))
-            elif re.match(r"^\d+\.\s+", line_str):
-                clean_num = re.sub(r"^\d+\.\s*", "", sanitized)
-                num_match = re.match(r"^(\d+)\.", line_str)
-                num_val = num_match.group(1) if num_match else "1"
-                story.append(Paragraph(f"<b>{num_val}.</b> {clean_num}", bullet_style))
-            elif line_str.startswith("|") and line_str.endswith("|"):
-                clean_pipe = sanitized.replace("|", " &nbsp;|&nbsp; ")
-                story.append(Paragraph(f"<font name='Courier' size='7'>{clean_pipe}</font>", body_style))
-            else:
-                story.append(Paragraph(sanitized, body_style))
-
+    _flush_table()
     story.append(Spacer(1, 8))
 
     # 6. Actionable Next Steps & Official Portals

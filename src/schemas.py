@@ -173,6 +173,8 @@ class AgentState(TypedDict, total=False):
     llm_model: Optional[str]
     llm_api_key: Optional[str]
     llm_base_url: Optional[str]
+    is_research: Optional[bool]
+    user_id: Optional[str]
 
 
 # --------------------------------------------------------------------------- #

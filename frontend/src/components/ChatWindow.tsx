@@ -1,8 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, Sparkles, Zap, ChevronDown, ChevronUp, BookOpen, ArrowRight, Copy, ThumbsUp, ThumbsDown, Share2, Plus, Check, Download, FileText, MessageSquare } from 'lucide-react';
+import { Send, Mic, Copy, ThumbsUp, ThumbsDown, Share2, Plus, Check, Download, FileText, MessageSquare } from 'lucide-react';
 import type { ChatMessage, UserProfile } from '../types';
 import { BisLogo } from './BisLogo';
 import { getApiUrl } from '../config';
+
+export const cleanMessageText = (text: string): string => {
+  if (!text) return '';
+  let cleaned = text.replace(/\n*\[?i asked (?:the |as )?follow[- ]?up(?: question)?\]?:?.*$/is, '').trimEnd();
+  // Strip leaked system integration output fields and metadata
+  cleaned = cleaned.replace(/(?:---|___|\*\*\*)*\s*(?:Output Fields\s*(?:\([^)]*\))?|OUTPUT FIELDS:)\s*(?:```[\s\S]*?```|\{[\s\S]*?\})?/gi, '').trimEnd();
+  cleaned = cleaned.replace(/(?:---|___|\*\*\*)*\s*```(?:json)?\s*\{[\s\S]*?\"applicable_standards\"[\s\S]*?\}\s*```/gi, '').trimEnd();
+  cleaned = cleaned.replace(/(?:---|___|\*\*\*)*\s*Prepared by:[\s\S]*?(?:\*End of Dossier\.?\*|$)/gi, '').trimEnd();
+  cleaned = cleaned.replace(/(?:---|___|\*\*\*)*\s*\*End of Dossier\.?\*\s*/gi, '').trimEnd();
+  return cleaned;
+};
 
 
 interface ChatWindowProps {
@@ -65,7 +76,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 }) => {
 
   const [inputText, setInputText] = useState('');
-  const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [downloadingMsgId, setDownloadingMsgId] = useState<string | null>(null);
   const [loadingStepIdx, setLoadingStepIdx] = useState(0);
@@ -74,12 +84,83 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleDownloadPdf = async (msg: ChatMessage) => {
     setDownloadingMsgId(msg.id);
     try {
+      const sanitizedCurrentText = cleanMessageText(msg.text);
+      const wholeConversationRe = /\b(?:whole|entire|complete|full)\b.*\b(?:conversation|history)\b/i;
+      const isWholeConversationRequest =
+        wholeConversationRe.test(msg.query || '') ||
+        wholeConversationRe.test(sanitizedCurrentText) ||
+        /master pdf|consultation summary/i.test(sanitizedCurrentText);
+
+      let effectiveQuery = msg.query || (sanitizedCurrentText.length > 60 ? sanitizedCurrentText.substring(0, 60) + '...' : sanitizedCurrentText);
+      let effectiveCoreResponse = cleanMessageText(msg.response?.core_response || msg.text);
+      let effectiveStandards = msg.response?.applicable_standards || [];
+      let effectiveNextStep = msg.response?.next_step || '';
+
+      if (isWholeConversationRequest) {
+        // Compile all conversational turns into a unified consultation dossier
+        const sections: string[] = [];
+        const standardsSet = new Set<string>();
+        let turnCounter = 1;
+
+        for (let i = 0; i < messages.length; i++) {
+          const current = messages[i];
+          if (current.sender === 'user') {
+            const nextAssistant = messages[i + 1];
+            if (nextAssistant && nextAssistant.sender === 'assistant') {
+              const userPrompt = current.text.trim();
+              const assistantContent = cleanMessageText(nextAssistant.response?.core_response || nextAssistant.text).trim();
+
+              // Skip meta-requests that are just brief download confirmations
+              const isMetaQuery = /^(?:give me (?:the )?pdf|download pdf|export pdf|no\s*,?\s*give me (?:the )?pdf)/i.test(userPrompt);
+              if (isMetaQuery && assistantContent.length < 250) {
+                continue;
+              }
+
+              sections.push(`## Topic ${turnCounter}: ${userPrompt}\n\n${assistantContent}`);
+              turnCounter++;
+
+              if (nextAssistant.response?.applicable_standards) {
+                nextAssistant.response.applicable_standards.forEach(std => standardsSet.add(std));
+              }
+              if (nextAssistant.response?.next_step) {
+                effectiveNextStep = nextAssistant.response.next_step;
+              }
+            }
+          }
+        }
+
+        if (sections.length > 0) {
+          effectiveQuery = 'Comprehensive BIS Consultation Dossier (Full Session)';
+          effectiveCoreResponse = sections.join('\n\n---\n\n');
+          effectiveStandards = Array.from(standardsSet);
+        }
+      } else if (effectiveCoreResponse.length < 250 && /pdf|dossier|compiled|download/i.test(effectiveCoreResponse)) {
+        // If current message is just a download acknowledgement, find the preceding substantive assistant response
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const prev = messages[i];
+          if (prev.sender === 'assistant' && prev.id !== msg.id) {
+            const prevText = cleanMessageText(prev.response?.core_response || prev.text);
+            if (prevText.length >= 250) {
+              effectiveCoreResponse = prevText;
+              effectiveQuery = prev.query || prev.text.substring(0, 60);
+              if (prev.response?.applicable_standards?.length) {
+                effectiveStandards = prev.response.applicable_standards;
+              }
+              if (prev.response?.next_step) {
+                effectiveNextStep = prev.response.next_step;
+              }
+              break;
+            }
+          }
+        }
+      }
+
       const payload = {
-        query: msg.query || (msg.text.length > 60 ? msg.text.substring(0, 60) + '...' : msg.text),
-        core_response: msg.response?.core_response || msg.text,
-        applicable_standards: msg.response?.applicable_standards || [],
-        next_step: msg.response?.next_step || '',
-        intent: msg.response?.intent || 'compliance',
+        query: effectiveQuery,
+        core_response: effectiveCoreResponse,
+        applicable_standards: effectiveStandards,
+        next_step: effectiveNextStep,
+        intent: isWholeConversationRequest ? 'full_session_dossier' : (msg.response?.intent || 'compliance'),
         user_name: currentUser?.full_name || 'Compliance Applicant',
         session_id: sessionId || 'default',
       };
@@ -97,6 +178,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.href = url;
       const disposition = res.headers.get('Content-Disposition');
       let filename = 'BIS_Compliance_Research_Dossier.pdf';
@@ -107,8 +189,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       a.download = filename;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        if (document.body.contains(a)) {
+          document.body.removeChild(a);
+        }
+      }, 2000);
     } catch (err) {
       console.error('PDF download error:', err);
       alert('Unable to generate PDF dossier. Please check backend connectivity.');
@@ -144,87 +230,463 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setInputText('');
   };
 
-  const toggleDetails = (msgId: string) => {
-    setExpandedDetails((prev) => ({ ...prev, [msgId]: !prev[msgId] }));
-  };
-
   const handleCopyText = (msgId: string, text: string) => {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(cleanMessageText(text));
     setCopiedMsgId(msgId);
     setTimeout(() => setCopiedMsgId(null), 2000);
   };
 
-  // Helper to parse basic markdown bold/list items cleanly for Compliance Mode
+  // Helper to parse basic markdown bold/list items and tables cleanly for Compliance Mode
   const renderFormattedText = (text: string) => {
-    const lines = text.split('\n');
+    // Pre-process text: strip follow-up tags, ensure collapsed tables and inline bullet lists have proper newlines
+    let processedText = cleanMessageText(text);
+    if (processedText.includes('|')) {
+      // 1. Heal orphan pipe lines created by bad splits: e.g. '\n|\n|' -> '\n|'
+      processedText = processedText.replace(/\n\s*\|\s*\n\s*\|/g, '\n|');
+      processedText = processedText.replace(/\n\s*\|\s*$/g, '');
+
+      // 2. Heal unclosed table rows (lines starting with '|' that have >= 2 pipes but no closing '|')
+      processedText = processedText
+        .split('\n')
+        .map((l) => {
+          const s = l.trim();
+          if (s.startsWith('|') && (s.match(/\|/g) || []).length >= 2 && !s.endsWith('|')) {
+            return s + ' |';
+          }
+          return l;
+        })
+        .join('\n');
+
+      // 3. Collapse blank lines between adjacent table rows
+      processedText = processedText.replace(/(\|\s*)\n\s*\n\s*(\|)/g, '$1\n$2');
+
+      // 4. Separate table end from subsequent headers or text
+      processedText = processedText.replace(/\|\s+([A-Z][A-Za-z0-9\s&]+:\s*[•●\-*])/g, '|\n\n$1');
+      processedText = processedText.replace(
+        /\|\s+(Key Takeaways|Important|Note|Recommendation|Actionable|Next Steps)/gi,
+        '|\n\n### $1'
+      );
+    }
+    // Expand collapsed inline bullets onto their own lines
+    processedText = processedText.replace(/(?<=[^\n])\s+([•●])\s+/g, '\n$1 ');
+
+    const lines = processedText.split('\n');
     let subCounter = 0;
     const isDark = theme === 'dark';
+    const elements: React.ReactNode[] = [];
+    let i = 0;
 
-    return lines.map((line, idx) => {
+    const isTableRow = (l: string) => {
+      const t = l.trim();
+      if (!t) return false;
+      const pipeCount = (t.match(/\|/g) || []).length;
+      if (t.startsWith('|') && pipeCount >= 1 && t.length > 2) return true;
+      return pipeCount >= 2;
+    };
+
+    const isTableDivider = (l: string) => {
+      const t = l.trim();
+      if (!isTableRow(t)) return false;
+      const inner = t.replace(/^\|/, '').replace(/\|$/, '');
+      const cells = inner.split('|');
+      return cells.length >= 2 && cells.every((c) => /^[\s\-:]+$/.test(c) && c.includes('-'));
+    };
+
+    while (i < lines.length) {
+      const line = lines[i];
       const trimmed = line.trim();
+
+      // Check for Code Block (```lang ... ```)
+      if (trimmed.startsWith('```')) {
+        const lang = trimmed.slice(3).trim();
+        const codeLines: string[] = [];
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith('```')) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        if (i < lines.length && lines[i].trim().startsWith('```')) {
+          i++;
+        }
+        elements.push(
+          <div
+            key={`code-${i}`}
+            style={{
+              margin: '16px 0',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              border: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid #E2E8F0',
+              background: isDark ? '#18191B' : '#F8FAFC',
+            }}
+          >
+            {lang && (
+              <div
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: isDark ? '#94A3B8' : '#64748B',
+                  background: isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9',
+                  borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid #E2E8F0',
+                }}
+              >
+                {lang}
+              </div>
+            )}
+            <pre
+              style={{
+                margin: 0,
+                padding: '12px 16px',
+                overflowX: 'auto',
+                fontSize: '0.86rem',
+                fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                lineHeight: 1.5,
+                color: isDark ? '#E2E8F0' : '#1E293B',
+              }}
+            >
+              <code>{codeLines.join('\n')}</code>
+            </pre>
+          </div>
+        );
+        continue;
+      }
+
+      // Check for Markdown Table Block
+      if (isTableRow(trimmed)) {
+        const tableStartIndex = i;
+        const tableLines: string[] = [];
+        while (i < lines.length) {
+          const curTrim = lines[i].trim();
+          if (isTableRow(curTrim)) {
+            tableLines.push(curTrim);
+            i++;
+          } else if (curTrim === '' && i + 1 < lines.length && isTableRow(lines[i + 1].trim())) {
+            // Tolerate accidental blank line between rows inside a table
+            i++;
+          } else {
+            break;
+          }
+        }
+
+        if (tableLines.length >= 2) {
+          const headerRow = tableLines[0];
+          const hasDivider = isTableDivider(tableLines[1]);
+          const dataRowStart = hasDivider ? 2 : 1;
+
+          const parseCells = (rowStr: string) => {
+            let raw = rowStr.trim();
+            if (raw.startsWith('|')) raw = raw.slice(1);
+            if (raw.endsWith('|')) raw = raw.slice(0, -1);
+            return raw.split('|').map((c) => c.trim());
+          };
+
+          const headers = parseCells(headerRow);
+          const bodyRows = tableLines.slice(dataRowStart).map(parseCells);
+
+          elements.push(
+            <div
+              key={`table-${i}`}
+              style={{
+                overflowX: 'auto',
+                marginTop: '18px',
+                marginBottom: '20px',
+                width: '100%',
+                borderRadius: '12px',
+                border: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid #E2E8F0',
+                boxShadow: isDark ? '0 4px 14px rgba(0, 0, 0, 0.35)' : '0 2px 8px rgba(0, 0, 0, 0.06)',
+              }}
+            >
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'separate',
+                  borderSpacing: 0,
+                  fontSize: '0.90rem',
+                  background: isDark ? '#1E1F20' : '#FFFFFF',
+                }}
+              >
+                <thead style={{ background: isDark ? '#282A2C' : '#F8FAFC' }}>
+                  <tr>
+                    {headers.map((h, hIdx) => (
+                      <th
+                        key={hIdx}
+                        style={{
+                          padding: '12px 16px',
+                          textAlign: 'left',
+                          fontWeight: 600,
+                          fontSize: '0.85rem',
+                          color: isDark ? '#F8FAFC' : '#0F172A',
+                          borderBottom: isDark ? '2px solid rgba(255, 255, 255, 0.14)' : '2px solid #CBD5E1',
+                          letterSpacing: '0.01em',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {parseBold(h)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {bodyRows.map((r, rIdx) => (
+                    <tr
+                      key={rIdx}
+                      style={{
+                        background:
+                          rIdx % 2 === 1
+                            ? isDark
+                              ? 'rgba(255, 255, 255, 0.025)'
+                              : '#F8FAFC'
+                            : 'transparent',
+                        transition: 'background 0.15s ease',
+                      }}
+                    >
+                      {r.map((c, cIdx) => (
+                        <td
+                          key={cIdx}
+                          style={{
+                            padding: '11px 16px',
+                            color: isDark ? '#CBD5E1' : '#334155',
+                            borderBottom:
+                              rIdx === bodyRows.length - 1
+                                ? 'none'
+                                : isDark
+                                  ? '1px solid rgba(255, 255, 255, 0.06)'
+                                  : '1px solid #F1F5F9',
+                            lineHeight: '1.58',
+                            fontSize: '0.92rem',
+                            verticalAlign: 'top',
+                          }}
+                        >
+                          {parseBold(c)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+          continue;
+        } else {
+          i = tableStartIndex;
+        }
+      }
+
+      // Headers
       if (line.startsWith('### ')) {
         subCounter = 0;
-        return <h3 key={idx} style={{ fontSize: '1.2rem', fontWeight: 700, color: isDark ? '#FFFFFF' : '#0F172A', marginTop: '20px', marginBottom: '10px', borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid #E2E8F0', paddingBottom: '4px' }}>{line.replace('### ', '')}</h3>;
+        elements.push(
+          <h3
+            key={i}
+            style={{
+              fontSize: '1.2rem',
+              fontWeight: 700,
+              color: isDark ? '#FFFFFF' : '#0F172A',
+              marginTop: '20px',
+              marginBottom: '10px',
+              borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid #E2E8F0',
+              paddingBottom: '4px',
+            }}
+          >
+            {line.replace('### ', '')}
+          </h3>
+        );
+        i++;
+        continue;
       }
       if (line.startsWith('## ')) {
         subCounter = 0;
-        return <h2 key={idx} style={{ fontSize: '1.35rem', fontWeight: 700, color: isDark ? '#FFFFFF' : '#0F172A', marginTop: '22px', marginBottom: '12px' }}>{line.replace('## ', '')}</h2>;
+        elements.push(
+          <h2
+            key={i}
+            style={{
+              fontSize: '1.35rem',
+              fontWeight: 700,
+              color: isDark ? '#FFFFFF' : '#0F172A',
+              marginTop: '22px',
+              marginBottom: '12px',
+            }}
+          >
+            {line.replace('## ', '')}
+          </h2>
+        );
+        i++;
+        continue;
       }
 
       // Sub-Bullet Points (Numbered: 1., 2., 3.)
       const isSubBullet = line.startsWith('  ') || line.startsWith('\t');
       const numMatch = trimmed.match(/^(\d+)[.)]\s+(.*)/);
-      
+
       if (isSubBullet || (numMatch && !trimmed.startsWith('•') && !trimmed.startsWith('●'))) {
         subCounter += 1;
         const content = numMatch ? numMatch[2] : trimmed.replace(/^[*•◦\d.-]+\s+/, '');
         const numberLabel = numMatch ? `${numMatch[1]}.` : `${subCounter}.`;
 
-        return (
-          <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginTop: '5px', marginBottom: '5px', paddingLeft: '0px' }}>
-            <span style={{ color: isDark ? '#94A3B8' : '#475569', fontWeight: 'bold', fontSize: '0.92rem', lineHeight: '1.65', minWidth: '20px' }}>{numberLabel}</span>
-            <div style={{ flex: 1, lineHeight: '1.65', color: isDark ? '#E2E8F0' : '#334155', fontSize: '0.96rem' }}>
+        elements.push(
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+              marginTop: '5px',
+              marginBottom: '5px',
+              paddingLeft: '0px',
+            }}
+          >
+            <span
+              style={{
+                color: isDark ? '#94A3B8' : '#475569',
+                fontWeight: 'bold',
+                fontSize: '0.92rem',
+                lineHeight: '1.65',
+                minWidth: '20px',
+              }}
+            >
+              {numberLabel}
+            </span>
+            <div
+              style={{
+                flex: 1,
+                lineHeight: '1.65',
+                color: isDark ? '#E2E8F0' : '#334155',
+                fontSize: '0.96rem',
+              }}
+            >
               {parseBold(content)}
             </div>
           </div>
-
         );
+        i++;
+        continue;
       }
 
       // Parent Level Bullet Points (Blue Solid Circle Bullet: ●)
-      if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ') || trimmed.startsWith('● ')) {
+      if (
+        trimmed.startsWith('- ') ||
+        trimmed.startsWith('* ') ||
+        trimmed.startsWith('• ') ||
+        trimmed.startsWith('● ')
+      ) {
         subCounter = 0;
         const content = trimmed.replace(/^[-*•●]\s+/, '');
-        return (
-          <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginTop: '16px', marginBottom: '8px', paddingLeft: '0px' }}>
-            <span style={{ color: isDark ? '#60A5FA' : '#2563EB', fontSize: '1.3rem', lineHeight: '1.4', minWidth: '20px' }}>●</span>
-            <div style={{ flex: 1, lineHeight: '1.6', color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: 700, fontSize: '1.15rem' }}>
+        elements.push(
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+              marginTop: '16px',
+              marginBottom: '8px',
+              paddingLeft: '0px',
+            }}
+          >
+            <span
+              style={{
+                color: isDark ? '#60A5FA' : '#2563EB',
+                fontSize: '1.3rem',
+                lineHeight: '1.4',
+                minWidth: '20px',
+              }}
+            >
+              ●
+            </span>
+            <div
+              style={{
+                flex: 1,
+                lineHeight: '1.6',
+                color: isDark ? '#FFFFFF' : '#0F172A',
+                fontWeight: 700,
+                fontSize: '1.15rem',
+              }}
+            >
               {parseBold(content)}
             </div>
           </div>
         );
+        i++;
+        continue;
       }
-
 
       subCounter = 0;
       if (trimmed === '') {
-        return <div key={idx} style={{ height: '8px' }} />;
+        elements.push(<div key={i} style={{ height: '8px' }} />);
+      } else {
+        elements.push(
+          <p
+            key={i}
+            style={{
+              marginBottom: '10px',
+              lineHeight: '1.7',
+              color: 'var(--text-main)',
+              fontSize: '1.05rem',
+            }}
+          >
+            {parseBold(line)}
+          </p>
+        );
       }
-      return (
-        <p key={idx} style={{ marginBottom: '10px', lineHeight: '1.7', color: 'var(--text-main)', fontSize: '1.05rem' }}>
-          {parseBold(line)}
-        </p>
-      );
-    });
+      i++;
+    }
+
+    return elements;
   };
 
 
   const parseBold = (str: string) => {
-    const parts = str.split(/(\*\*.*?\*\*)/g);
     const isDark = theme === 'dark';
+    // Match bold **text**, markdown links [text](url), or raw http(s) urls
+    const regex = /(\*\*.*?\*\*|\[.*?\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s)\]]+)/g;
+    const parts = str.split(regex);
     return parts.map((part, i) => {
+      if (!part) return null;
       if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} style={{ color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
+        return (
+          <strong key={i} style={{ color: isDark ? '#FFFFFF' : '#0F172A', fontWeight: 600 }}>
+            {part.slice(2, -2)}
+          </strong>
+        );
+      }
+      const mdLinkMatch = part.match(/^\[(.*?)\]\((https?:\/\/[^\s)]+)\)$/);
+      if (mdLinkMatch) {
+        return (
+          <a
+            key={i}
+            href={mdLinkMatch[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: isDark ? '#60A5FA' : '#2563EB',
+              textDecoration: 'underline',
+              textUnderlineOffset: '2px',
+              wordBreak: 'break-all',
+            }}
+          >
+            {mdLinkMatch[1]}
+          </a>
+        );
+      }
+      if (part.startsWith('http://') || part.startsWith('https://')) {
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: isDark ? '#60A5FA' : '#2563EB',
+              textDecoration: 'underline',
+              textUnderlineOffset: '2px',
+              wordBreak: 'break-all',
+            }}
+          >
+            {part}
+          </a>
+        );
       }
       return part;
     });
@@ -277,7 +739,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           messages.map((msg, idx) => {
             const isUser = msg.sender === 'user';
             const res = msg.response;
-            const isDetailsOpen = expandedDetails[msg.id] || false;
 
             // Check if user specifically requested PDF, full compliance, or full research
             const prevUserText = (idx > 0 && messages[idx - 1].sender === 'user' ? messages[idx - 1].text : '').toLowerCase();
@@ -338,209 +799,136 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
 
 
-                        {/* Action Toolbar */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '14px', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                      {/* Action Toolbar */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginTop: '14px', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => handleCopyText(msg.id, msg.text)}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem' }}
+                          title="Copy response"
+                        >
+                          {copiedMsgId === msg.id ? <Check size={16} color="#10B981" /> : <Copy size={16} />}
+                          <span>{copiedMsgId === msg.id ? 'Copied' : 'Copy'}</span>
+                        </button>
+
+                        {/* Dedicated Export Research PDF Button (ONLY when user requested PDF, full compliance, or full research) */}
+                        {isPdfRequested && (
                           <button
-                            onClick={() => handleCopyText(msg.id, msg.text)}
-                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem' }}
-                            title="Copy response"
-                          >
-                            {copiedMsgId === msg.id ? <Check size={16} color="#10B981" /> : <Copy size={16} />}
-                            <span>{copiedMsgId === msg.id ? 'Copied' : 'Copy'}</span>
-                          </button>
-
-                          {/* Dedicated Export Research PDF Button (ONLY when user requested PDF, full compliance, or full research) */}
-                          {isPdfRequested && (
-                            <button
-                              onClick={() => handleDownloadPdf(msg)}
-                              disabled={downloadingMsgId === msg.id}
-                              style={{
-                                background: '#FEF3C7',
-                                border: '1px solid #FDE68A',
-                                color: '#B45309',
-                                borderRadius: '16px',
-                                padding: '5px 12px',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                fontSize: '0.82rem',
-                                fontWeight: 600,
-                                transition: 'all 0.2s ease',
-                              }}
-                              title="Download official BIS Compliance Research Dossier (PDF)"
-                            >
-                              {downloadingMsgId === msg.id ? <Download size={14} className="animate-spin" /> : <FileText size={14} />}
-                              <span>{downloadingMsgId === msg.id ? 'Generating PDF...' : 'Export Research PDF'}</span>
-                            </button>
-                          )}
-
-                          <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Good response">
-                            <ThumbsUp size={16} />
-                          </button>
-
-                          <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Bad response">
-                            <ThumbsDown size={16} />
-                          </button>
-
-                          <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Share response">
-                            <Share2 size={16} />
-                          </button>
-                        </div>
-
-                        {/* Interactive Full Research PDF Dossier Card (ONLY if user asked for PDF, full compliance, or full research) */}
-                        {res && isPdfRequested && (
-                          <div
+                            onClick={() => handleDownloadPdf(msg)}
+                            disabled={downloadingMsgId === msg.id}
                             style={{
-                              marginTop: '14px',
-                              padding: '12px 16px',
-                              borderRadius: '12px',
                               background: '#FEF3C7',
-                              border: '1px solid #FCD34D',
-                              display: 'flex',
+                              border: '1px solid #FDE68A',
+                              color: '#B45309',
+                              borderRadius: '16px',
+                              padding: '5px 12px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
                               alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '12px',
-                              flexWrap: 'wrap',
+                              gap: '6px',
+                              fontSize: '0.82rem',
+                              fontWeight: 600,
+                              transition: 'all 0.2s ease',
                             }}
+                            title="Download official BIS Compliance Research Dossier (PDF)"
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <BisLogo size={24} />
-                              <div>
-                                <div style={{ fontWeight: 600, color: '#B45309', fontSize: '0.88rem' }}>
-                                  Official BIS Compliance Research Dossier (PDF)
-                                </div>
-                                <div style={{ fontSize: '0.78rem', color: '#78350F' }}>
-                                  Includes authoritative IS standard titles, technical limits, licensing roadmap & SHA-256 audit hash.
-                                </div>
+                            {downloadingMsgId === msg.id ? <Download size={14} className="animate-spin" /> : <FileText size={14} />}
+                            <span>{downloadingMsgId === msg.id ? 'Generating PDF...' : 'Export Research PDF'}</span>
+                          </button>
+                        )}
+
+                        <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Good response">
+                          <ThumbsUp size={16} />
+                        </button>
+
+                        <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Bad response">
+                          <ThumbsDown size={16} />
+                        </button>
+
+                        <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} title="Share response">
+                          <Share2 size={16} />
+                        </button>
+                      </div>
+
+                      {/* Interactive Full Research PDF Dossier Card (ONLY if user asked for PDF, full compliance, or full research) */}
+                      {res && isPdfRequested && (
+                        <div
+                          style={{
+                            marginTop: '14px',
+                            padding: '12px 16px',
+                            borderRadius: '12px',
+                            background: '#FEF3C7',
+                            border: '1px solid #FCD34D',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '12px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <BisLogo size={24} />
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#B45309', fontSize: '0.88rem' }}>
+                                Official BIS Compliance Research Dossier (PDF)
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: '#78350F' }}>
+                                Includes authoritative IS standard titles, technical limits, licensing roadmap & SHA-256 audit hash.
                               </div>
                             </div>
-                            <button
-                              onClick={() => handleDownloadPdf(msg)}
-                              disabled={downloadingMsgId === msg.id}
-                              style={{
-                                background: '#D97706',
-                                color: '#FFFFFF',
-                                border: 'none',
-                                borderRadius: '20px',
-                                padding: '6px 16px',
-                                fontWeight: 700,
-                                fontSize: '0.82rem',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                boxShadow: '0 2px 8px rgba(217, 119, 6, 0.25)',
-                                transition: 'transform 0.15s ease',
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
-                              onMouseLeave={(e) => (e.currentTarget.style.transform = 'none')}
-                            >
-                              <Download size={14} />
-                              <span>{downloadingMsgId === msg.id ? 'Compiling Dossier...' : 'Download PDF'}</span>
-                            </button>
                           </div>
-                        )}
+                          <button
+                            onClick={() => handleDownloadPdf(msg)}
+                            disabled={downloadingMsgId === msg.id}
+                            style={{
+                              background: '#D97706',
+                              color: '#FFFFFF',
+                              border: 'none',
+                              borderRadius: '20px',
+                              padding: '6px 16px',
+                              fontWeight: 700,
+                              fontSize: '0.82rem',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              boxShadow: '0 2px 8px rgba(217, 119, 6, 0.25)',
+                              transition: 'transform 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
+                            onMouseLeave={(e) => (e.currentTarget.style.transform = 'none')}
+                          >
+                            <Download size={14} />
+                            <span>{downloadingMsgId === msg.id ? 'Compiling Dossier...' : 'Download PDF'}</span>
+                          </button>
+                        </div>
+                      )}
 
-                        {/* Gemini Expandable Telemetry Accordion */}
-                        {res && (
-                          <div style={{ marginTop: '10px', paddingTop: '12px', borderTop: `1px solid ${theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0'}` }}>
-                            <button
-                              onClick={() => toggleDetails(msg.id)}
-                              style={{
-                                background: theme === 'dark' ? '#282A2C' : '#F8FAFC',
-                                border: '1px solid var(--glass-border)',
-                                borderRadius: '18px',
-                                color: theme === 'dark' ? '#CBD5E1' : 'var(--text-subtle)',
-                                fontSize: '0.82rem',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                padding: '8px 14px',
-                              }}
-                            >
-                              <BisLogo size={16} />
-                              <span>
-                                {res.applicable_standards?.length ? `View ${res.applicable_standards.length} IS Codes & Technical Telemetry` : 'View Technical Telemetry'}
-                              </span>
-                              {isDetailsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                            </button>
-
-                            {isDetailsOpen && (
-                              <div className="animate-fade-in" style={{ marginTop: '12px', padding: '16px', borderRadius: '16px', background: theme === 'dark' ? '#1E1F20' : '#FFFFFF', border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.88rem', boxShadow: theme === 'dark' ? '0 4px 14px rgba(0, 0, 0, 0.4)' : '0 2px 8px rgba(0, 0, 0, 0.04)' }}>
-                                {/* Cache Hit Badge */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  {res.cache_hit ? (
-                                    <span style={{ color: '#F59E0B', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <Zap size={15} /> 0-Token Instant Cache Hit
-                                    </span>
-                                  ) : (
-                                    <span style={{ color: '#38BDF8', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <Sparkles size={15} /> LangGraph Hybrid RAG ({res.response_time_ms} ms)
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Applicable IS Codes */}
-                                {res.applicable_standards && res.applicable_standards.length > 0 && (
-                                  <div>
-                                    <span style={{ color: 'var(--text-muted)' }}>Applicable Standards:</span>
-                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
-                                      {res.applicable_standards.map((st, i) => (
-                                        <span key={i} style={{ background: theme === 'dark' ? 'rgba(56, 189, 248, 0.15)' : '#E0F2FE', border: theme === 'dark' ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid #BAE6FD', color: theme === 'dark' ? '#7DD3FC' : '#0369A1', padding: '4px 10px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 600 }}>
-                                          {st}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Citation */}
-                                {res.source_citation && (
-                                  <div style={{ color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <BookOpen size={15} color={theme === 'dark' ? '#38BDF8' : '#0284C7'} />
-                                    <span>Source Citation: {res.source_citation}</span>
-                                  </div>
-                                )}
-
-                                {/* Next Step */}
-                                {res.next_step && (
-                                  <div style={{ color: theme === 'dark' ? '#FBBF24' : '#B45309', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <ArrowRight size={15} />
-                                    <span>Actionable Next Step: {res.next_step}</span>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Follow-up Prompt Chip */}
-                            {res.follow_up_prompt && (
-                              <div style={{ marginTop: '12px' }}>
-                                <button
-                                  onClick={() => onSelectFollowUp(res.follow_up_prompt)}
-                                  style={{
-                                    padding: '8px 16px',
-                                    borderRadius: '20px',
-                                    background: theme === 'dark' ? 'rgba(124, 58, 237, 0.18)' : '#F5F3FF',
-                                    border: theme === 'dark' ? '1px solid rgba(124, 58, 237, 0.4)' : '1px solid #DDD6FE',
-                                    color: theme === 'dark' ? '#C4B5FD' : '#7C3AED',
-                                    fontSize: '0.85rem',
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                  }}
-                                >
-                                  <MessageSquare size={14} />
-                                  <span>{res.follow_up_prompt}</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      {/* Follow-up Prompt Chip */}
+                      {res?.follow_up_prompt && (
+                        <div style={{ marginTop: '12px' }}>
+                          <button
+                            onClick={() => onSelectFollowUp(res.follow_up_prompt)}
+                            style={{
+                              padding: '8px 16px',
+                              borderRadius: '20px',
+                              background: theme === 'dark' ? 'rgba(124, 58, 237, 0.18)' : '#F5F3FF',
+                              border: theme === 'dark' ? '1px solid rgba(124, 58, 237, 0.4)' : '1px solid #DDD6FE',
+                              color: theme === 'dark' ? '#C4B5FD' : '#7C3AED',
+                              fontSize: '0.85rem',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                            }}
+                          >
+                            <MessageSquare size={14} />
+                            <span>{res.follow_up_prompt}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                  }
 
                 </div>
               </div>
@@ -549,37 +937,39 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
 
         {/* Clean Retrieval State Indicator with subtle flickering transition */}
-        {isLoading && (
-          <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%', padding: '8px 20px' }}>
-            <div
-              className="retrieval-flicker"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '10px',
-                background: 'transparent',
-                border: 'none',
-                boxShadow: 'none',
-                padding: '0',
-                fontSize: '0.94rem',
-                fontWeight: 500,
-              }}
-            >
-              <BisLogo size={18} />
-              <span style={{ color: theme === 'dark' ? '#94A3B8' : '#475569', fontWeight: 500, letterSpacing: '-0.01em' }}>
-                {cleanStatusText(backendStatus || THINKING_STEPS[loadingStepIdx])}
-              </span>
+        {
+          isLoading && (
+            <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%', padding: '8px 20px' }}>
+              <div
+                className="retrieval-flicker"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'transparent',
+                  border: 'none',
+                  boxShadow: 'none',
+                  padding: '0',
+                  fontSize: '0.94rem',
+                  fontWeight: 500,
+                }}
+              >
+                <BisLogo size={18} />
+                <span style={{ color: theme === 'dark' ? '#94A3B8' : '#475569', fontWeight: 500, letterSpacing: '-0.01em' }}>
+                  {cleanStatusText(backendStatus || THINKING_STEPS[loadingStepIdx])}
+                </span>
+              </div>
             </div>
-          </div>
-        )}
+          )
+        }
 
 
 
         <div ref={messagesEndRef} />
-      </div>
+      </div >
 
       {/* Google Gemini 28px Rounded Pill Input Bar */}
-      <div className="chat-input-bar-container" style={{ width: '100%', background: 'var(--gemini-bg-main)', padding: '12px 20px 24px 20px' }}>
+      < div className="chat-input-bar-container" style={{ width: '100%', background: 'var(--gemini-bg-main)', padding: '12px 20px 24px 20px' }}>
         <div style={{ maxWidth: '820px', margin: '0 auto' }}>
           <form
             onSubmit={handleSubmit}
@@ -608,7 +998,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
             <input
               type="text"
-              placeholder="Ask Gemini about BIS standards, hallmarking, or CRS compliance..."
+              placeholder="Ask BIS SATHI about BIS standards, hallmarking, or CRS compliance..."
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={isLoading}
@@ -667,11 +1057,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
           {/* Gemini Footer Disclaimer */}
           <div style={{ textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '10px' }}>
-            Gemini / BIS Agentic RAG may display inaccurate info, so double-check official IS standards on Manakonline.
+            BIS Agentic RAG may display inaccurate info, so double-check official IS standards on Manakonline.
           </div>
         </div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 };
 

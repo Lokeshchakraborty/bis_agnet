@@ -9,12 +9,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 
 import uuid
+import asyncio
+import httpx
 from contextlib import asynccontextmanager
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional,Tuple
 
 import time
 from fastapi import FastAPI, File, HTTPException, Path as APIPath, UploadFile, Form, Request, status
@@ -79,6 +82,116 @@ class SessionManager:
 
 
 session_manager = SessionManager()
+
+
+# --------------------------------------------------------------------------- #
+# Automated Keep-Alive Service for Cloud Providers (Render Free Tier Anti-Idle)
+# --------------------------------------------------------------------------- #
+class KeepAliveManager:
+    """
+    Automated background worker that periodically sends self-pings to the /health
+    endpoint every 10 minutes (configurable). On Render Free Tier, services spin down
+    after 15 minutes of inactivity. This keep-alive worker pinging the public or internal
+    router prevents cold starts and unresponsiveness.
+    """
+
+    def __init__(self) -> None:
+        self.enabled: bool = os.getenv("KEEP_ALIVE_ENABLED", "true").lower() in ("true", "1", "yes")
+        raw_interval = os.getenv("KEEP_ALIVE_INTERVAL_SECONDS", "600")
+        try:
+            parsed_interval = int(raw_interval)
+            if parsed_interval <= 0:
+                logger.warning(
+                    "KEEP_ALIVE_INTERVAL_SECONDS must be greater than zero, got %s. Defaulting to 600.",
+                    parsed_interval,
+                )
+                parsed_interval = 600
+        except (ValueError, TypeError):
+            logger.warning(
+                "Invalid KEEP_ALIVE_INTERVAL_SECONDS '%s': must be an integer. Defaulting to 600.",
+                raw_interval,
+            )
+            parsed_interval = 600
+
+        self.interval_seconds: int = parsed_interval
+        self.total_pings: int = 0
+        self.successful_pings: int = 0
+        self.failed_pings: int = 0
+        self.last_ping_time: Optional[str] = None
+        self.last_status_code: Optional[int] = None
+        self.last_error: Optional[str] = None
+        self._task: Optional[asyncio.Task] = None
+
+    def get_target_url(self) -> str:
+        """Derive target health ping URL. Prioritizes public RENDER_EXTERNAL_URL to trigger Render router."""
+        custom_url = os.getenv("KEEP_ALIVE_URL")
+        if custom_url and custom_url.strip():
+            return custom_url.strip()
+
+        render_ext = os.getenv("RENDER_EXTERNAL_URL")
+        if render_ext and render_ext.strip():
+            return f"{render_ext.strip().rstrip('/')}/health"
+
+        port = getattr(CONFIG, "port", 8000)
+        return f"http://127.0.0.1:{port}/health"
+
+    async def ping_once(self) -> dict:
+        """Execute a single HTTP GET health check ping."""
+        from datetime import datetime, timezone
+        target_url = self.get_target_url()
+        self.total_pings += 1
+        now_iso = datetime.now(timezone.utc).isoformat()
+        self.last_ping_time = now_iso
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                start_t = time.perf_counter()
+                resp = await client.get(target_url, headers={"User-Agent": "BIS-Agent-KeepAlive/1.0"})
+                duration_ms = (time.perf_counter() - start_t) * 1000
+                self.last_status_code = resp.status_code
+
+                if resp.status_code == 200:
+                    self.successful_pings += 1
+                    self.last_error = None
+                    logger.info("Keep-alive self-ping success -> %s [status: %s, duration: %.2fms]", target_url, resp.status_code, duration_ms)
+                    return {"status": "success", "status_code": resp.status_code, "duration_ms": round(duration_ms, 2), "url": target_url}
+                else:
+                    self.failed_pings += 1
+                    self.last_error = f"HTTP {resp.status_code}: {resp.text[:100]}"
+                    logger.warning("Keep-alive self-ping non-200 -> %s [status: %s]", target_url, resp.status_code)
+                    return {"status": "warning", "status_code": resp.status_code, "url": target_url}
+        except Exception as exc:
+            self.failed_pings += 1
+            self.last_error = str(exc)
+            logger.warning("Keep-alive self-ping failed -> %s [error: %s]", target_url, exc)
+            return {"status": "error", "error": str(exc), "url": target_url}
+
+    async def run_loop(self) -> None:
+        """Background loop running every interval_seconds (default 600s = 10 min)."""
+        if not self.enabled:
+            logger.info("Keep-alive background worker is disabled via KEEP_ALIVE_ENABLED=false.")
+            return
+
+        logger.info(
+            "Starting Keep-Alive Background Service (Interval: %ds / %.1f min, Target: %s)",
+            self.interval_seconds,
+            self.interval_seconds / 60.0,
+            self.get_target_url(),
+        )
+
+        # Wait 30 seconds after server startup before first ping
+        try:
+            await asyncio.sleep(30)
+            while True:
+                await self.ping_once()
+                await asyncio.sleep(self.interval_seconds)
+        except asyncio.CancelledError:
+            logger.info("Keep-alive background task cancelled gracefully.")
+        except Exception as exc:
+            logger.exception("Unexpected error in keep-alive worker loop: %s", exc)
+
+
+keep_alive_manager = KeepAliveManager()
 _audio_handler = None
 
 
@@ -237,6 +350,21 @@ class HealthResponse(BaseModel):
     chroma_db_exists: bool
     active_sessions_count: int
     supabase_connected: bool = False
+    keep_alive_enabled: bool = True
+
+
+class KeepAliveStatusResponse(BaseModel):
+    status: str = Field(..., description="Worker status: 'active' or 'disabled'")
+    target_url: str = Field(..., description="Target health ping URL")
+    interval_seconds: int = Field(..., description="Ping interval in seconds (default 600)")
+    interval_minutes: float = Field(..., description="Ping interval in minutes (default 10.0)")
+    total_pings: int = Field(default=0, description="Total count of attempted self-pings")
+    successful_pings: int = Field(default=0, description="Total count of successful self-pings (HTTP 200)")
+    failed_pings: int = Field(default=0, description="Total count of failed self-pings")
+    last_ping_time: Optional[str] = Field(default=None, description="ISO timestamp of last ping")
+    last_status_code: Optional[int] = Field(default=None, description="HTTP status code of last ping")
+    last_error: Optional[str] = Field(default=None, description="Error message if last ping failed")
+    message: str = Field(default="", description="Status explanation message")
 
 
 class SessionInfoResponse(BaseModel):
@@ -273,8 +401,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Supabase DB initialization notice: %s", exc)
 
+    # Launch automated 10-minute keep-alive task for anti-idle protection on Render
+    keep_alive_task = asyncio.create_task(keep_alive_manager.run_loop())
+
     yield
     logger.info("Shutting down BIS Agent REST API server...")
+    keep_alive_task.cancel()
+    try:
+        await keep_alive_task
+    except asyncio.CancelledError:
+        pass
+    except Exception as exc:
+        logger.debug("Keep-alive task cleanup notice: %s", exc)
+
     try:
         from backend.db.supabase_client import close_async_db_engine
         await close_async_db_engine()
@@ -334,7 +473,68 @@ async def health_check() -> HealthResponse:
         chroma_db_exists=chroma_exists,
         active_sessions_count=len(session_manager._sessions),
         supabase_connected=supabase_ok,
+        keep_alive_enabled=keep_alive_manager.enabled,
     )
+
+
+@app.get(
+    "/health/ping",
+    tags=["Diagnostics"],
+    summary="Lightweight ping endpoint for Render / UptimeRobot health monitors",
+)
+async def health_ping():
+    """Simple 200 OK ping for external monitors and keep-alive verification."""
+    return {
+        "status": "alive",
+        "timestamp": time.time(),
+        "keep_alive_enabled": keep_alive_manager.enabled,
+        "target_url": keep_alive_manager.get_target_url(),
+    }
+
+
+@app.get(
+    "/api/v1/keep-alive",
+    response_model=KeepAliveStatusResponse,
+    tags=["Diagnostics"],
+    summary="Get status of automated 10-minute Render keep-alive background worker",
+)
+async def get_keep_alive_status() -> KeepAliveStatusResponse:
+    """Returns telemetry of automated keep-alive self-pings that prevent Render from idling."""
+    interval_min = round(keep_alive_manager.interval_seconds / 60.0, 1)
+    interval_display = int(interval_min) if interval_min.is_integer() else interval_min
+    return KeepAliveStatusResponse(
+        status="active" if keep_alive_manager.enabled else "disabled",
+        target_url=keep_alive_manager.get_target_url(),
+        interval_seconds=keep_alive_manager.interval_seconds,
+        interval_minutes=interval_min,
+        total_pings=keep_alive_manager.total_pings,
+        successful_pings=keep_alive_manager.successful_pings,
+        failed_pings=keep_alive_manager.failed_pings,
+        last_ping_time=keep_alive_manager.last_ping_time,
+        last_status_code=keep_alive_manager.last_status_code,
+        last_error=keep_alive_manager.last_error,
+        message=f"Automated keep-alive self-ping worker runs every {interval_display} minutes to prevent Render idle spin-down.",
+    )
+
+
+@app.post(
+    "/api/v1/keep-alive/trigger",
+    tags=["Diagnostics"],
+    summary="Trigger an immediate keep-alive self-ping",
+)
+async def trigger_keep_alive():
+    """Immediately execute a single health check self-ping."""
+    result = await keep_alive_manager.ping_once()
+    return {
+        "status": result.get("status", "success"),
+        "ping_result": result,
+        "telemetry": {
+            "total_pings": keep_alive_manager.total_pings,
+            "successful_pings": keep_alive_manager.successful_pings,
+            "failed_pings": keep_alive_manager.failed_pings,
+            "last_ping_time": keep_alive_manager.last_ping_time,
+        },
+    }
 
 
 @app.get("/", tags=["Diagnostics"], summary="Root endpoint - serves UI or API status")
@@ -454,23 +654,30 @@ async def update_user_model_config(payload: UserModelConfigRequest) -> SimpleSta
 )
 async def test_model_connection(payload: TestModelConnectionRequest) -> SimpleStatusResponse:
     """Instantiate target LLM model and verify connection with a test prompt."""
+    import time
     from src.agent.llm_factory import create_llm_model
-    provider = payload.llm_provider or payload.provider or "google"
-    model = payload.llm_model or payload.model or CONFIG.llm_model or "gemini-3.5-flash"
+    provider = payload.llm_provider or payload.provider or "gemini"
+    model = payload.llm_model or payload.model or CONFIG.llm_model or "gemini-3.5-flash-lite"
     api_key = payload.llm_api_key or payload.api_key or ""
     base_url = payload.llm_base_url or payload.base_url or ""
     try:
+        t0 = time.perf_counter()
         llm = create_llm_model(
             provider=provider,
             model_name=model,
             api_key=api_key,
             base_url=base_url,
+            max_tokens=15,
         )
-        res = llm.invoke("Hi")
-        actual_model = getattr(llm, "model", model)
+        if hasattr(llm, "ainvoke") and callable(llm.ainvoke):
+            _ = await llm.ainvoke("Ping")
+        else:
+            _ = await asyncio.to_thread(llm.invoke, "Ping")
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        actual_model = getattr(llm, "model_name", getattr(llm, "model", model))
         return SimpleStatusResponse(
             status="success",
-            message=f"Successfully connected to {provider.upper()} ({actual_model})!",
+            message=f"Verified {provider.upper()} ({actual_model}) response in {latency_ms}ms!",
         )
     except Exception as exc:
         logger.warning("Test model connection failed for provider %s model %s: %s", provider, model, exc)
@@ -743,6 +950,16 @@ async def get_session_history(
     user_id: str = "default_user",
 ):
     """Retrieve full conversation turn history for a session from Supabase or in-memory cache."""
+    def _clean_text(val: str) -> str:
+        if not val:
+            return ""
+        return re.sub(
+            r"^\[?i asked (?:the |as )?follow[- ]?up(?: question)?\]?:?.*\Z",
+            "",
+            val,
+            flags=re.IGNORECASE | re.DOTALL | re.MULTILINE,
+        ).strip()
+
     try:
         from backend.db.supabase_client import get_session_from_supabase
         db_sess = await get_session_from_supabase(session_id, user_id=user_id)
@@ -750,13 +967,20 @@ async def get_session_history(
             history = db_sess["history"]
             if isinstance(history, str):
                 history = json.loads(history)
-            return {"session_id": session_id, "history": history}
+            clean_db_history = [
+                {
+                    "user": turn.get("user", "") if isinstance(turn, dict) else "",
+                    "assistant": _clean_text(turn.get("assistant", "")) if isinstance(turn, dict) else "",
+                }
+                for turn in history
+            ]
+            return {"session_id": session_id, "history": clean_db_history}
     except Exception as exc:
         logger.warning("Error fetching session '%s' from Supabase: %s", session_id, exc)
 
     mem_sess = session_manager.get_session(session_id, user_id=user_id)
     raw_history = list(mem_sess.history)
-    history_json = [{"user": u, "assistant": a} for u, a in raw_history]
+    history_json = [{"user": u, "assistant": _clean_text(a)} for u, a in raw_history]
     return {"session_id": session_id, "history": history_json}
 
 

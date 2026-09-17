@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getApiUrl } from './config';
 import { Header } from './components/Header';
 import { SessionSidebar } from './components/SessionSidebar';
-import { ChatWindow } from './components/ChatWindow';
+import { ChatWindow, cleanMessageText } from './components/ChatWindow';
 import { VoiceRecorderModal } from './components/VoiceRecorderModal';
 import { TelemetryPanel } from './components/TelemetryPanel';
 import { AuthModal } from './components/AuthModal';
@@ -299,7 +299,7 @@ export const App: React.FC = () => {
               loadedMessages.push({
                 id: `hist-a-${idx}`,
                 sender: 'assistant',
-                text: turn.assistant,
+                text: cleanMessageText(turn.assistant),
                 timestamp: '',
               });
             }

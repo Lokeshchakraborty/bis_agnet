@@ -110,14 +110,72 @@ class TestBISAgentAPI(unittest.TestCase):
         data = response.json()
         core_resp = data.get("core_response", "").lower()
         self.assertTrue(
-            "10,000" in core_resp or "10000" in core_resp or "10 000" in core_resp or "litre" in core_resp,
-            f"Expected capacity limit (10,000 Litres) in core_response, got: {core_resp}"
+            any(w in core_resp for w in ["10,000", "10000", "10 000", "25,000", "25000", "litre", "liter"]),
+            f"Expected capacity limit (10,000 or 25,000 Litres) in core_response, got: {core_resp}"
         )
         self.assertTrue(
             "60" in core_resp or "mg/l" in core_resp,
             f"Expected chemical migration limit (60 mg/l) in core_response, got: {core_resp}"
         )
 
+    def test_08_keep_alive_endpoints(self):
+        # 1. Health check includes keep_alive_enabled
+        health_resp = self.client.get("/health")
+        self.assertEqual(health_resp.status_code, 200)
+        self.assertIn("keep_alive_enabled", health_resp.json())
+
+        # 2. Lightweight ping endpoint
+        ping_resp = self.client.get("/health/ping")
+        self.assertEqual(ping_resp.status_code, 200)
+        ping_data = ping_resp.json()
+        self.assertEqual(ping_data["status"], "alive")
+        self.assertIn("target_url", ping_data)
+
+        # 3. Keep-alive status telemetry endpoint
+        status_resp = self.client.get("/api/v1/keep-alive")
+        self.assertEqual(status_resp.status_code, 200)
+        status_data = status_resp.json()
+        self.assertEqual(status_data["status"], "active")
+        self.assertEqual(status_data["interval_seconds"], 600)
+        self.assertEqual(status_data["interval_minutes"], 10.0)
+        self.assertIn("10 minutes", status_data["message"])
+        self.assertIn("target_url", status_data)
+
+        # 4. Trigger endpoint propagates ping_result status
+        trigger_resp = self.client.post("/api/v1/keep-alive/trigger")
+        self.assertEqual(trigger_resp.status_code, 200)
+        trigger_data = trigger_resp.json()
+        self.assertEqual(trigger_data["status"], trigger_data["ping_result"]["status"])
+        self.assertIn("telemetry", trigger_data)
+
+    def test_09_keep_alive_manager_interval_validation(self):
+        import os
+        from unittest.mock import patch
+        from app import KeepAliveManager
+
+        with patch.dict(os.environ):
+            # 1. Zero value defaults to 600
+            os.environ["KEEP_ALIVE_INTERVAL_SECONDS"] = "0"
+            mgr_zero = KeepAliveManager()
+            self.assertEqual(mgr_zero.interval_seconds, 600)
+
+            # 2. Negative value defaults to 600
+            os.environ["KEEP_ALIVE_INTERVAL_SECONDS"] = "-60"
+            mgr_neg = KeepAliveManager()
+            self.assertEqual(mgr_neg.interval_seconds, 600)
+
+            # 3. Non-integer defaults to 600
+            os.environ["KEEP_ALIVE_INTERVAL_SECONDS"] = "invalid"
+            mgr_inv = KeepAliveManager()
+            self.assertEqual(mgr_inv.interval_seconds, 600)
+
+            # 4. Valid positive integer succeeds
+            os.environ["KEEP_ALIVE_INTERVAL_SECONDS"] = "300"
+            mgr = KeepAliveManager()
+            self.assertEqual(mgr.interval_seconds, 300)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+

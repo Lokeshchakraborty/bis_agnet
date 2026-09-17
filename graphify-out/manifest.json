@@ -1,0 +1,1100 @@
+{
+  "app.py": {
+    "mtime": 1789677727.1480446,
+    "seen": 1789677917.4128149,
+    "ast_hash": "cf0f4a9b2cedd8934ff23062de70dffd",
+    "semantic_hash": ""
+  },
+  "backend/__init__.py": {
+    "mtime": 1788443444.9081018,
+    "seen": 1789496451.9208102,
+    "ast_hash": "61c68ed8d0b07064b587076fa7789b40",
+    "semantic_hash": "61c68ed8d0b07064b587076fa7789b40"
+  },
+  "backend/db/__init__.py": {
+    "mtime": 1788443449.0330465,
+    "seen": 1789496451.9208136,
+    "ast_hash": "a5fa043d40be9675fc17941a4b25e289",
+    "semantic_hash": "a5fa043d40be9675fc17941a4b25e289"
+  },
+  "backend/db/schema.sql": {
+    "mtime": 1788494448.413932,
+    "seen": 1789496451.9208148,
+    "ast_hash": "75ff7b71ab3d0e2a866935e68d850dd6",
+    "semantic_hash": "75ff7b71ab3d0e2a866935e68d850dd6"
+  },
+  "backend/db/supabase_client.py": {
+    "mtime": 1788870936.0786953,
+    "seen": 1789496451.9208164,
+    "ast_hash": "0406b7574627e4bd99a2d2a793f17763",
+    "semantic_hash": "0406b7574627e4bd99a2d2a793f17763"
+  },
+  "data/benchmark_evaluation_report.json": {
+    "mtime": 1788436949.1189532,
+    "seen": 1789496451.9208174,
+    "ast_hash": "3db61998f98ace4b1b7a16458ede7243",
+    "semantic_hash": "3db61998f98ace4b1b7a16458ede7243"
+  },
+  "frontend/.oxlintrc.json": {
+    "mtime": 1788444090.3193805,
+    "seen": 1789496451.920819,
+    "ast_hash": "029f4905006c1fffd96bc863e2d98d3e",
+    "semantic_hash": "029f4905006c1fffd96bc863e2d98d3e"
+  },
+  "frontend/package.json": {
+    "mtime": 1789549822.8895602,
+    "seen": 1789550493.5232966,
+    "ast_hash": "5c530350e255ba7b653d12fb38e73468",
+    "semantic_hash": ""
+  },
+  "frontend/src/App.tsx": {
+    "mtime": 1789556972.427301,
+    "seen": 1789557042.044808,
+    "ast_hash": "4a7d3df2a2687e1fb8af1b2cd2cf40ea",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/AuditLedgerModal.tsx": {
+    "mtime": 1789550973.780704,
+    "seen": 1789553045.5006778,
+    "ast_hash": "f77dee5a645f10e167a844129bbbf68a",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/AuthModal.tsx": {
+    "mtime": 1789550973.7885349,
+    "seen": 1789553045.5006795,
+    "ast_hash": "8da5b86332800263b4db48396d922535",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/BisLogo.tsx": {
+    "mtime": 1789550973.8391585,
+    "seen": 1789553045.5006807,
+    "ast_hash": "c384e0ac1a27f7b077d5d627e1656471",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/ChatWindow.tsx": {
+    "mtime": 1789677851.081889,
+    "seen": 1789677917.412864,
+    "ast_hash": "948af5feae8db71c7928f98fd8b7a58c",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/Header.tsx": {
+    "mtime": 1789550973.82906,
+    "seen": 1789553045.5006828,
+    "ast_hash": "f9c48dcabd6a6e77a8cd2caf05f42f79",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/LandingPage.tsx": {
+    "mtime": 1789550973.6282914,
+    "seen": 1789553045.5006838,
+    "ast_hash": "8c8a13f1cdebb2193614527354e1ccc8",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/SessionSidebar.tsx": {
+    "mtime": 1789550973.8174067,
+    "seen": 1789553045.5006847,
+    "ast_hash": "d2db72acd76dbb1b74b95f300c5892c0",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/TelemetryPanel.tsx": {
+    "mtime": 1789550973.808961,
+    "seen": 1789553045.5006864,
+    "ast_hash": "20cf0ddc2bcae3ce2de2531cfb7f3ca2",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/UserProfileModal.tsx": {
+    "mtime": 1789677871.8266673,
+    "seen": 1789677917.412875,
+    "ast_hash": "c8c0b7978354fc6813eefa0c24cbc9ae",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/VoiceRecorderModal.tsx": {
+    "mtime": 1789550973.7963288,
+    "seen": 1789553045.500688,
+    "ast_hash": "7b18c5b6fd68bec88df8fc9a7412a848",
+    "semantic_hash": ""
+  },
+  "frontend/src/config.ts": {
+    "mtime": 1788501975.641824,
+    "seen": 1789496451.920834,
+    "ast_hash": "5342b86e2e25cc436078045043b5b778",
+    "semantic_hash": "5342b86e2e25cc436078045043b5b778"
+  },
+  "frontend/src/main.tsx": {
+    "mtime": 1788444091.3697107,
+    "seen": 1789496451.920835,
+    "ast_hash": "787e5a07efeb2bf6209d5937195f2f68",
+    "semantic_hash": "787e5a07efeb2bf6209d5937195f2f68"
+  },
+  "frontend/src/types.ts": {
+    "mtime": 1788688668.0182924,
+    "seen": 1789496451.9208362,
+    "ast_hash": "7e7f03393d8ac32c2e4274f580a408fa",
+    "semantic_hash": "7e7f03393d8ac32c2e4274f580a408fa"
+  },
+  "frontend/tsconfig.app.json": {
+    "mtime": 1788444090.449787,
+    "seen": 1789496451.9208376,
+    "ast_hash": "5f2dafd737dea8a4ddcbb10f5113ac5a",
+    "semantic_hash": "5f2dafd737dea8a4ddcbb10f5113ac5a"
+  },
+  "frontend/tsconfig.json": {
+    "mtime": 1788444090.4847317,
+    "seen": 1789496451.9208388,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": "a3d39fa780ebff65444de257f291ce6c"
+  },
+  "frontend/tsconfig.node.json": {
+    "mtime": 1788444090.5154276,
+    "seen": 1789496451.9208398,
+    "ast_hash": "f9cb81ddcea69ffdab672fc8c48dca66",
+    "semantic_hash": "f9cb81ddcea69ffdab672fc8c48dca66"
+  },
+  "frontend/vercel.json": {
+    "mtime": 1788501984.1842299,
+    "seen": 1789496451.920841,
+    "ast_hash": "325ab8932995f30222533f89e329e39e",
+    "semantic_hash": "325ab8932995f30222533f89e329e39e"
+  },
+  "frontend/vite.config.ts": {
+    "mtime": 1788444128.1564498,
+    "seen": 1789496451.9208422,
+    "ast_hash": "c72c6b8e378550a94c08d3a89dc67e40",
+    "semantic_hash": "c72c6b8e378550a94c08d3a89dc67e40"
+  },
+  "main.py": {
+    "mtime": 1788441387.375223,
+    "seen": 1789496451.9208434,
+    "ast_hash": "244e5462467acbc283b90e6565f5552f",
+    "semantic_hash": "244e5462467acbc283b90e6565f5552f"
+  },
+  "server.py": {
+    "mtime": 1788523340.1539607,
+    "seen": 1789496451.9208443,
+    "ast_hash": "3ef2ef9a5eb64d4378460252c5e044ad",
+    "semantic_hash": "3ef2ef9a5eb64d4378460252c5e044ad"
+  },
+  "src/__init__.py": {
+    "mtime": 1788342357.2603168,
+    "seen": 1789496451.9208455,
+    "ast_hash": "1ef270a9510ad86ccf13cf0d37ac4770",
+    "semantic_hash": "1ef270a9510ad86ccf13cf0d37ac4770"
+  },
+  "src/agent/__init__.py": {
+    "mtime": 1788364483.4259398,
+    "seen": 1789496451.9208467,
+    "ast_hash": "eb1add642a09867ffc8d9acc194a86cb",
+    "semantic_hash": "eb1add642a09867ffc8d9acc194a86cb"
+  },
+  "src/agent/graph.py": {
+    "mtime": 1789579398.339879,
+    "seen": 1789581817.6618228,
+    "ast_hash": "0adae3cadd15a500373ef679cb738388",
+    "semantic_hash": ""
+  },
+  "src/agent/guardrails.py": {
+    "mtime": 1789677760.1493418,
+    "seen": 1789677917.4129078,
+    "ast_hash": "17c75bcb8ca15c0bd6aa4169c6879bb0",
+    "semantic_hash": ""
+  },
+  "src/agent/llm_factory.py": {
+    "mtime": 1789653174.5570982,
+    "seen": 1789653331.2603736,
+    "ast_hash": "24d0d22dec6b5d0a81ee6174ef515510",
+    "semantic_hash": ""
+  },
+  "src/agent/nodes.py": {
+    "mtime": 1789677778.3761053,
+    "seen": 1789677917.4129121,
+    "ast_hash": "7fb771e6f834ae2fd30f4f7ca30902fe",
+    "semantic_hash": ""
+  },
+  "src/agent/session.py": {
+    "mtime": 1789677792.6398275,
+    "seen": 1789677917.4129143,
+    "ast_hash": "33ae43b7d275c4e9542a38e72ab9319b",
+    "semantic_hash": ""
+  },
+  "src/audio/__init__.py": {
+    "mtime": 1788342280.950706,
+    "seen": 1789496451.9208539,
+    "ast_hash": "cf9d8dd2596c70d89d8a81dc34c03fc9",
+    "semantic_hash": "cf9d8dd2596c70d89d8a81dc34c03fc9"
+  },
+  "src/audio/handler.py": {
+    "mtime": 1788432817.8363576,
+    "seen": 1789496451.9208548,
+    "ast_hash": "152469d3f874bc10d15b689b123ddf22",
+    "semantic_hash": "152469d3f874bc10d15b689b123ddf22"
+  },
+  "src/config.py": {
+    "mtime": 1789674994.4345946,
+    "seen": 1789675366.7095733,
+    "ast_hash": "4409c70f5ed7d694d5916c503bcf8176",
+    "semantic_hash": ""
+  },
+  "src/ingestion/__init__.py": {
+    "mtime": 1788342353.9394362,
+    "seen": 1789496451.9208577,
+    "ast_hash": "aeab1213dd7530c9094f622f9ed42932",
+    "semantic_hash": "aeab1213dd7530c9094f622f9ed42932"
+  },
+  "src/ingestion/build_vectordb.py": {
+    "mtime": 1788494590.4908361,
+    "seen": 1789496451.9208589,
+    "ast_hash": "a4b3174aac2dd54e68e6d4c6e5f437e7",
+    "semantic_hash": "a4b3174aac2dd54e68e6d4c6e5f437e7"
+  },
+  "src/ingestion/crawler.py": {
+    "mtime": 1788811853.914801,
+    "seen": 1789496451.9208598,
+    "ast_hash": "f8638d604fcfdf697379b7c86ed71916",
+    "semantic_hash": "f8638d604fcfdf697379b7c86ed71916"
+  },
+  "src/ingestion/download_docs.py": {
+    "mtime": 1788379830.2447424,
+    "seen": 1789496451.9208612,
+    "ast_hash": "95eefa6011bdd1f8e7014c42ac316269",
+    "semantic_hash": "95eefa6011bdd1f8e7014c42ac316269"
+  },
+  "src/schemas.py": {
+    "mtime": 1789677739.104085,
+    "seen": 1789677917.4129305,
+    "ast_hash": "6a7b98c553b02bf9f51fb7b5c20de0b3",
+    "semantic_hash": ""
+  },
+  "src/tools/__init__.py": {
+    "mtime": 1788811838.560577,
+    "seen": 1789496451.920864,
+    "ast_hash": "11ae5977a87944c3aa7ecc7c6345044a",
+    "semantic_hash": "11ae5977a87944c3aa7ecc7c6345044a"
+  },
+  "src/tools/audit.py": {
+    "mtime": 1788456901.449635,
+    "seen": 1789496451.9208653,
+    "ast_hash": "7ea0c7c32dc2f6578c3f296911404fe6",
+    "semantic_hash": "7ea0c7c32dc2f6578c3f296911404fe6"
+  },
+  "src/tools/cache.py": {
+    "mtime": 1789673160.6485317,
+    "seen": 1789675366.7095814,
+    "ast_hash": "83ac77f1886e4ec2d52edf67728d94ed",
+    "semantic_hash": ""
+  },
+  "src/tools/pdf_generator.py": {
+    "mtime": 1789672775.705751,
+    "seen": 1789675366.7095823,
+    "ast_hash": "764bbadcd11e925eec6785f936dfafde",
+    "semantic_hash": ""
+  },
+  "src/tools/retriever.py": {
+    "mtime": 1788804599.2950528,
+    "seen": 1789496451.9208686,
+    "ast_hash": "c225c481a9919b6d97502c9edda645fc",
+    "semantic_hash": "c225c481a9919b6d97502c9edda645fc"
+  },
+  "src/tools/scraper.py": {
+    "mtime": 1789677814.7611,
+    "seen": 1789677917.4129434,
+    "ast_hash": "3b87ab443577d3b25b435526b09c3709",
+    "semantic_hash": ""
+  },
+  "src/tools/vector_store.py": {
+    "mtime": 1788495163.9839885,
+    "seen": 1789496451.9208713,
+    "ast_hash": "5321febfbdb11296eb5f546150754097",
+    "semantic_hash": "5321febfbdb11296eb5f546150754097"
+  },
+  "test_api.py": {
+    "mtime": 1789553510.4140778,
+    "seen": 1789555442.0099745,
+    "ast_hash": "30aee64a78b524842ebf2440f4302951",
+    "semantic_hash": ""
+  },
+  "test_scraper.py": {
+    "mtime": 1788811898.563728,
+    "seen": 1789496451.9208732,
+    "ast_hash": "74faeed96ad631c16d2eea66e60f455e",
+    "semantic_hash": "74faeed96ad631c16d2eea66e60f455e"
+  },
+  ".agents/rules/graphify.md": {
+    "mtime": 1789495162.750456,
+    "seen": 1789542072.1965559,
+    "ast_hash": "a0e4d192b9e2e17256124dbfc8e24e6a",
+    "semantic_hash": ""
+  },
+  ".agents/workflows/graphify.md": {
+    "mtime": 1789495162.7538753,
+    "seen": 1789542072.1965609,
+    "ast_hash": "a831cf3669f1e6ab85d8a80ebe655f99",
+    "semantic_hash": ""
+  },
+  "DEPLOYMENT.md": {
+    "mtime": 1789543440.0315495,
+    "seen": 1789543571.692927,
+    "ast_hash": "ed52d2180d9bd9cb785eabe31f6eb682",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1788804599.1631389,
+    "seen": 1789542072.196566,
+    "ast_hash": "1e21287172135b0bf5d2389e7c2f9330",
+    "semantic_hash": ""
+  },
+  "brain.md": {
+    "mtime": 1789677894.9910698,
+    "seen": 1789677917.4129586,
+    "ast_hash": "046329f1e2a0980090d8437b594cdf67",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/certification_procedures_reference.txt": {
+    "mtime": 1788252701.433477,
+    "seen": 1789542072.1965709,
+    "ast_hash": "746327e865646b6fd7e931d20443dcbb",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/hallmark_procedures_reference.txt": {
+    "mtime": 1788252701.4264808,
+    "seen": 1789542072.1965737,
+    "ast_hash": "b43ef6ae3f8a687a59341b4268b8ca29",
+    "semantic_hash": ""
+  },
+  "data/procedures/laboratory/bis_recognation.txt": {
+    "mtime": 1788257350.1561432,
+    "seen": 1789542072.1965756,
+    "ast_hash": "c25af4c80c5491cbef9f02f082237017",
+    "semantic_hash": ""
+  },
+  "data/procedures/laboratory/laboratory_procedures_reference.txt": {
+    "mtime": 1788257352.528867,
+    "seen": 1789542072.1965785,
+    "ast_hash": "59935b26b267880e16644a18fba0a948",
+    "semantic_hash": ""
+  },
+  "data/procedures/manakonline/manakonline_procedures_reference.txt": {
+    "mtime": 1788252701.4632072,
+    "seen": 1789542072.196581,
+    "ast_hash": "2b3cc26aeb323755d50df32d8746e33c",
+    "semantic_hash": ""
+  },
+  "data/procedures/registration/registration_procedures_reference.txt": {
+    "mtime": 1788252701.4394782,
+    "seen": 1789542072.1965828,
+    "ast_hash": "5bff35130865098f533c004f706aca63",
+    "semantic_hash": ""
+  },
+  "docker-compose.yml": {
+    "mtime": 1788523263.8427224,
+    "seen": 1789542072.1965852,
+    "ast_hash": "baf143e87dda38f857002ddd9e5b0602",
+    "semantic_hash": ""
+  },
+  "frontend/README.md": {
+    "mtime": 1788444090.60734,
+    "seen": 1789542072.1965873,
+    "ast_hash": "10495bfcc6c568eca4dab6dd5df795d3",
+    "semantic_hash": ""
+  },
+  "frontend/index.html": {
+    "mtime": 1788444135.6526985,
+    "seen": 1789542072.1965892,
+    "ast_hash": "c1e8dc9755d1b5bf1fc976427415a274",
+    "semantic_hash": ""
+  },
+  "render.yaml": {
+    "mtime": 1789543374.0303395,
+    "seen": 1789543571.6929576,
+    "ast_hash": "7526a9782d71ef40b7d70c159648a23e",
+    "semantic_hash": ""
+  },
+  "requirements.txt": {
+    "mtime": 1789673171.2909155,
+    "seen": 1789675366.7096086,
+    "ast_hash": "d082e399174f562134ed27136b3297ed",
+    "semantic_hash": ""
+  },
+  "BIS_SATHI_SIH2026_Comprehensive_Pitch_and_Analysis.pdf": {
+    "mtime": 1788872490.6212482,
+    "seen": 1789542072.1965954,
+    "ast_hash": "b77ca3920772f8eeb5c1ad9e8f3d72e9",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/10-steps-for-BIS-toy-certification.pdf": {
+    "mtime": 1788258568.356754,
+    "seen": 1789542072.1965978,
+    "ast_hash": "cc93573ff6fb5465711c912e55c706c1",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/233710.pdf": {
+    "mtime": 1788259392.6301076,
+    "seen": 1789542072.1965997,
+    "ast_hash": "7595974c0b008f0aadf7d180eb9c09ae",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/233931.pdf": {
+    "mtime": 1788259396.3298445,
+    "seen": 1789542072.196602,
+    "ast_hash": "905e5084de00c132ac1f4fbfaf3464b1",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/234684.pdf": {
+    "mtime": 1788259829.852357,
+    "seen": 1789542072.196604,
+    "ast_hash": "061bb8518a64e2a8558677d4c0d2bf76",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/236872.pdf": {
+    "mtime": 1788259875.992838,
+    "seen": 1789542072.196606,
+    "ast_hash": "86aad6ab051293a2f8d2cd4fbcff3b58",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/243465.pdf": {
+    "mtime": 1788259908.3246617,
+    "seen": 1789542072.196608,
+    "ast_hash": "47346bff06678dd4d4f56ad734b5e50e",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/246553.pdf": {
+    "mtime": 1788259932.517377,
+    "seen": 1789542072.1966097,
+    "ast_hash": "7a5bb1d8ab8b3b879d11ecdac1286845",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/248323.pdf": {
+    "mtime": 1788260014.312813,
+    "seen": 1789542072.1966121,
+    "ast_hash": "5dfed55fbdb35bd333c29af2661429b8",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/252119.pdf": {
+    "mtime": 1788260029.9524267,
+    "seen": 1789542072.1966145,
+    "ast_hash": "9040fbe97461638661723e9537ecf624",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/255820.pdf": {
+    "mtime": 1788260037.2412198,
+    "seen": 1789542072.1966164,
+    "ast_hash": "e95ce61aaeb56184737d5cfe0190bec5",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/273629.pdf": {
+    "mtime": 1788260129.2785263,
+    "seen": 1789542072.1966183,
+    "ast_hash": "24ccc341c67ad539c7b59600047c7eaa",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Amendment-to-Notification-of-Marking-Fee-for-use-of-Standard-Mark-dated-13.06.20255.pdf": {
+    "mtime": 1788260053.9550817,
+    "seen": 1789542072.1966202,
+    "ast_hash": "d8d93b7bd1436a47f2fd43d45815608f",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/BIS_CA_12032019 (1).pdf": {
+    "mtime": 1788258407.468392,
+    "seen": 1789542072.1966221,
+    "ast_hash": "11ffce6017f997fa9b61b1a7c8372357",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/BIS_CA_12032019.pdf": {
+    "mtime": 1788257876.921973,
+    "seen": 1789542072.1966243,
+    "ast_hash": "11ffce6017f997fa9b61b1a7c8372357",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/CMD-2-G-18-dated-07.10.2024.pdf": {
+    "mtime": 1788260042.0759757,
+    "seen": 1789542072.1966264,
+    "ast_hash": "b4cd588f843c400ca321ffa0cc9a332a",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/CMD_2_05092022_new.pdf": {
+    "mtime": 1788259887.0835128,
+    "seen": 1789542072.196629,
+    "ast_hash": "e64f980b5eeec92d99834c0cfa14cb2e",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Changeover-guidelines-for-IS-8978_10-July (1).pdf": {
+    "mtime": 1788258535.368848,
+    "seen": 1789542072.196634,
+    "ast_hash": "7e4958059895d0f462dbc3de87cc0844",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Changeover-guidelines-for-IS-8978_10-July.pdf": {
+    "mtime": 1788258509.3050394,
+    "seen": 1789542072.1966364,
+    "ast_hash": "7e4958059895d0f462dbc3de87cc0844",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Circular-on-misleading-claim-28-aug_compressed (1).pdf": {
+    "mtime": 1788258592.0577316,
+    "seen": 1789542072.1966388,
+    "ast_hash": "1fedbeb557331baf18c656f65eba0fef",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Circular-on-misleading-claim-28-aug_compressed.pdf": {
+    "mtime": 1788258583.0803168,
+    "seen": 1789542072.1966412,
+    "ast_hash": "1fedbeb557331baf18c656f65eba0fef",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Circular_6Lre_2023-06-07.pdf": {
+    "mtime": 1788258683.0205374,
+    "seen": 1789542072.1966434,
+    "ast_hash": "5a3339874f43eca64d514f4ea0ebe058",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Circular_GcO6_2024-12-16.pdf": {
+    "mtime": 1788258537.5721583,
+    "seen": 1789542072.1966453,
+    "ast_hash": "7b41490d9cbd934711f670e59639147a",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Circular_qfN8_2025-06-20.pdf": {
+    "mtime": 1788258538.3601768,
+    "seen": 1789542072.1966476,
+    "ast_hash": "58095d784c0a287f1e3964fb0948b8a9",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Circular_t7zB_2025-05-15.pdf": {
+    "mtime": 1788258516.7200062,
+    "seen": 1789542072.1966496,
+    "ast_hash": "6693041f3278ae318f7103e0797dedfe",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/CoC-Surveillance-Guidelines-BIS-Website.pdf": {
+    "mtime": 1788258430.5928361,
+    "seen": 1789542072.1966515,
+    "ast_hash": "fe3848d21c3f3f795e95012e8a7029b2",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/CoC-guidleines-Bicycle-reflectors-to-AICMA-1.pdf": {
+    "mtime": 1788260250.4860015,
+    "seen": 1789542072.1966534,
+    "ast_hash": "54817e32c11d93b094647994a5e0e8fc",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Cotton-Bales-operation-guidelines.pdf": {
+    "mtime": 1788258772.7361453,
+    "seen": 1789542072.1966553,
+    "ast_hash": "29a8d6202965cc66da7c6d2a047c0155",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Cotton-bales-GOL-CSOL-guidelines.pdf": {
+    "mtime": 1788258766.0277874,
+    "seen": 1789542072.1966574,
+    "ast_hash": "ccafcb96b97d3c07bcc60e1d46727f48",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Dealing-With-Unsatisfactory-Performance-Guidelines-25Feb2026.pdf": {
+    "mtime": 1788258173.847264,
+    "seen": 1789542072.1966598,
+    "ast_hash": "07af254e6ed0bc4ba55bff9379e1330c",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Dealing-WithNon-Conformity-Guidelines-25Feb2026.pdf": {
+    "mtime": 1788257920.4839952,
+    "seen": 1789542072.1966617,
+    "ast_hash": "c1faec5e6fd730e00941a98a3987981b",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/FAQ_Updated_25032021 (1).pdf": {
+    "mtime": 1788260225.1872222,
+    "seen": 1789542072.1966639,
+    "ast_hash": "5f248c0eed5bd99779990dcbcdf15c3b",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/FAQ_Updated_25032021.pdf": {
+    "mtime": 1788258532.4707084,
+    "seen": 1789542072.1966655,
+    "ast_hash": "5f248c0eed5bd99779990dcbcdf15c3b",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/FactorySurveillance-Guidelines-25Feb2026.pdf": {
+    "mtime": 1788258361.1331475,
+    "seen": 1789542072.1966677,
+    "ast_hash": "cb0c71af5df39e711b4936b21cc354b9",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/GAZETTE-NOTIFICATION-FINAL_compressed.pdf": {
+    "mtime": 1788259854.6904726,
+    "seen": 1789542072.1966696,
+    "ast_hash": "6933f78908076851c0042be3148ade5e",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Grant-of-CoC-Guidelines.pdf": {
+    "mtime": 1788258416.2423623,
+    "seen": 1789542072.1966722,
+    "ast_hash": "f4875b100c2d3da7ce1066c79934de4f",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/GrantofLicence-Guidelines-25Feb2026.pdf": {
+    "mtime": 1788257909.0946648,
+    "seen": 1789542072.1966743,
+    "ast_hash": "ee0ceca26bfc7f2f70412e8384af5398",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Guidance-document-on-QCOs-Revised-1.pdf": {
+    "mtime": 1788257509.4729934,
+    "seen": 1789542072.1966763,
+    "ast_hash": "69b2a7ec915aca20a33ae0af4beb1175",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Guidelines-RenewalOf-CoC.pdf": {
+    "mtime": 1788258422.212345,
+    "seen": 1789542072.1966786,
+    "ast_hash": "177558014e2bf32019943e0c7bb0509c",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Guidelines-Samples-Coding-Retesting.pdf": {
+    "mtime": 1788258354.839333,
+    "seen": 1789542072.196681,
+    "ast_hash": "0606f620b976987bd4c9c60c44b12a0b",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Guidelines-on-submission-of-applications-for-CoC-For-manufacturers.pdf": {
+    "mtime": 1788258703.1744242,
+    "seen": 1789542072.1966832,
+    "ast_hash": "c410137fe91a37135f176ab802ae1bd6",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/GuidelinesForUtilisationOfClusterLabByMSMEs.pdf": {
+    "mtime": 1788258399.501693,
+    "seen": 1789542072.1966853,
+    "ast_hash": "40e47f08dd169393505a32c8f74a7a69",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Guidelines_18032021 (1).pdf": {
+    "mtime": 1788260219.264185,
+    "seen": 1789542072.1966877,
+    "ast_hash": "3ea8a92834c8d728857866eb5746c173",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Guidelines_18032021.pdf": {
+    "mtime": 1788258539.825661,
+    "seen": 1789542072.1966898,
+    "ast_hash": "3ea8a92834c8d728857866eb5746c173",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/IS_4296-PT1.pdf": {
+    "mtime": 1788258609.5292912,
+    "seen": 1789542072.1966922,
+    "ast_hash": "6946b1b99113b828d6ea77aa8fc10fe2",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/IS_4296-PT3.pdf": {
+    "mtime": 1788258616.7509344,
+    "seen": 1789542072.1966944,
+    "ast_hash": "4e8e18f32fd97f7e26c15b2d1a2d2f1a",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/In-house-Lab-Circular-Dec-2025.pdf": {
+    "mtime": 1788258466.365571,
+    "seen": 1789542072.1966963,
+    "ast_hash": "1282da86e27dd5604423c4f2475b3e0c",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Industry-information-guideline-for-IS-4250.pdf": {
+    "mtime": 1788258622.3884633,
+    "seen": 1789542072.1966987,
+    "ast_hash": "18ee82ed2e45ab3a807b13a92ce7adfc",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Industry-information_01_03_2021-V2.pdf": {
+    "mtime": 1788260246.5301168,
+    "seen": 1789542072.1967006,
+    "ast_hash": "64c477a9205936748a416f050d816192",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/List-of-Products-Under-Simplified-Procedure.pdf": {
+    "mtime": 1788259657.8457813,
+    "seen": 1789542072.1967027,
+    "ast_hash": "d8e889a397c1e0777ebae25efcd3596b",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/MF-Notification-2021.pdf": {
+    "mtime": 1788259301.4341624,
+    "seen": 1789542072.196705,
+    "ast_hash": "87a1a7a5308a6e425aa677dd95e65883",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/MF-Notification-dated-13.10.2021.pdf": {
+    "mtime": 1788259385.6494994,
+    "seen": 1789542072.1967072,
+    "ast_hash": "4e152583bb4c0b2e2386a2fe758c257f",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/MF-Notification-dated-17.12.2021.pdf": {
+    "mtime": 1788259389.0424938,
+    "seen": 1789542072.1967094,
+    "ast_hash": "23e2984c314ea10d6a00881fed4c7eac",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/MF-Notification-dated-21.09.2021.pdf": {
+    "mtime": 1788259334.3127263,
+    "seen": 1789542072.1967115,
+    "ast_hash": "59b298edccb6664bf09504a2e041a6f2",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/MarketSurveillance-Guidelines-25Feb2026.pdf": {
+    "mtime": 1788258386.2480023,
+    "seen": 1789542072.196714,
+    "ast_hash": "6a820bd0ffd9b47a49b758273b0d59f6",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Marking-fee-for-all-products-under-certification-scheme-1.pdf": {
+    "mtime": 1788258916.0867171,
+    "seen": 1789542072.1967163,
+    "ast_hash": "485d7ed8f794052d71af49415ceea071",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Note-BOs-FMCD-website.pdf": {
+    "mtime": 1788260207.1916492,
+    "seen": 1789542072.196718,
+    "ast_hash": "c7ed03a52f09bb5db634cd0593fbb232",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Notification.pdf": {
+    "mtime": 1788259982.181551,
+    "seen": 1789542072.1967204,
+    "ast_hash": "66ae9b9d109635d27b4760f82f9dd6b1",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/PM-for-IS-302-2-201-and-IS-368.pdf": {
+    "mtime": 1788258526.904526,
+    "seen": 1789542072.1967225,
+    "ast_hash": "eb24322f300bfc1ee8b69ed9e7b50418",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/PM-for-IS-302-2-21-and-IS-2082.pdf": {
+    "mtime": 1788258525.5370927,
+    "seen": 1789542072.1967244,
+    "ast_hash": "383ee1b58fb75646d928b5f0937964b6",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Press_tools_guidelines.pdf": {
+    "mtime": 1788260213.398054,
+    "seen": 1789542072.1967266,
+    "ast_hash": "f9e3a57cd06d38b8903ec37fd060d3a4",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/RenewalGuidelines-WebsiteHosting.pdf": {
+    "mtime": 1788258348.2988613,
+    "seen": 1789542072.1967285,
+    "ast_hash": "6b87521dbd451d12dc5e3c35055b4d0b",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Requiremnts-for-various-firms.pdf": {
+    "mtime": 1788258538.2734885,
+    "seen": 1789542072.1967306,
+    "ast_hash": "81baec4b490c86795f1e3c7b4eb911ce",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Scheme-1-80_-Concession-MicroUnits-For3years.pdf": {
+    "mtime": 1788259999.774742,
+    "seen": 1789542072.1967328,
+    "ast_hash": "e294a6bfe707fab272e256516a0b91c9",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Scheme-1-Concession-Extension-31May2029.pdf": {
+    "mtime": 1788260079.8072727,
+    "seen": 1789542072.1967347,
+    "ast_hash": "4ecb3ce3ad5ee4de501c4d7905ee446a",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Scheme-1-Notification-07March-2024.pdf": {
+    "mtime": 1788260073.1612413,
+    "seen": 1789542072.1967368,
+    "ast_hash": "df910a62af69ca40b870eacdd73c53b5",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/Website-GuidelinesForChangeInScopeOfLicence_may.pdf": {
+    "mtime": 1788258186.2163901,
+    "seen": 1789542072.1967387,
+    "ast_hash": "752f0a2a33989496b29030809ce020f9",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/change-in-scope-of-coc-circular.pdf": {
+    "mtime": 1788258742.258057,
+    "seen": 1789542072.196741,
+    "ast_hash": "5a3c8f4212684d0b4ccd9ae5191f3e45",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/footwear-circular-modified-1.pdf": {
+    "mtime": 1788258554.7032845,
+    "seen": 1789542072.1967432,
+    "ast_hash": "f0166c3c3dd05e3ad5f9c387d71df41d",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/marking-fee-gazette-january-2025.pdf": {
+    "mtime": 1788260049.4841459,
+    "seen": 1789542072.1967459,
+    "ast_hash": "5d3fd98229ab9c0a7caeeea8accbeb9d",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/modified-CoC-laminations-guidelines (1).pdf": {
+    "mtime": 1788260265.7973852,
+    "seen": 1789542072.1967483,
+    "ast_hash": "75a40935cb858b74d251de52a49ee2b7",
+    "semantic_hash": ""
+  },
+  "data/procedures/certification/modified-CoC-laminations-guidelines.pdf": {
+    "mtime": 1788258667.3463995,
+    "seen": 1789542072.1967504,
+    "ast_hash": "75a40935cb858b74d251de52a49ee2b7",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/227306.pdf": {
+    "mtime": 1788255859.4735403,
+    "seen": 1789542072.1967535,
+    "ast_hash": "9b81b881615322bf49fc9a0b21f35b23",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Amendment-05-Nov-2024-1.pdf": {
+    "mtime": 1788256033.6105616,
+    "seen": 1789542072.1967554,
+    "ast_hash": "5bcdf74ca50dad8f9f60eff2ecf55118",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/BIS-HM-Amendment-Regulations-2022.pdf": {
+    "mtime": 1788255773.647398,
+    "seen": 1789542072.1967576,
+    "ast_hash": "2a14566ba4f9c14d11517644f1d05f02",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/BIS_HM_Amdt_Regulations_2021_Gazette.pdf": {
+    "mtime": 1788255741.8128161,
+    "seen": 1789542072.1967602,
+    "ast_hash": "d253299af1598b0345943ae8f0c3e321",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/BIS_Hallmarking_Regulations_2018_Gazette_notification.pdf": {
+    "mtime": 1788255706.388579,
+    "seen": 1789542072.196762,
+    "ast_hash": "ee157b5cc16a69524a19390bd629351c",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/ECGazetteNotification.pdf": {
+    "mtime": 1788212388.7886121,
+    "seen": 1789542072.196764,
+    "ast_hash": "f073ca68dad118726df05cc63363b98a",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/GAZETTE.pdf": {
+    "mtime": 1788255963.7202628,
+    "seen": 1789542072.1967657,
+    "ast_hash": "a56efca120ced5343457a3f28fc5a103",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Gazette-Notification-dt-02-March-2026-Mandatory-Hallmarking-amendment-order-1-1.pdf": {
+    "mtime": 1788256116.2131133,
+    "seen": 1789542072.1967676,
+    "ast_hash": "0af8d29c14a4b98358f3796753f432a5",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Guidelines-for-Jewellers.pdf": {
+    "mtime": 1788256272.9437234,
+    "seen": 1789542072.1967692,
+    "ast_hash": "6c5246d3842dff1d722a078d05a0a348",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Guidelines-on-Testing-of-old-gold-lying-with-the-consumers-from-BIS-recognized-AHC-revised.pdf": {
+    "mtime": 1788256673.5832944,
+    "seen": 1789542072.1967711,
+    "ast_hash": "4a8d1a36482b6cb53decc77751d48aa7",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/GuidelinesForAHCs.pdf": {
+    "mtime": 1788256464.9625723,
+    "seen": 1789542072.1967728,
+    "ast_hash": "b7b9e7565428ae0d4b9923e4a6870b20",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Guidelines_for_Refinery_or_Mint_08102018.pdf": {
+    "mtime": 1788256581.831465,
+    "seen": 1789542072.196786,
+    "ast_hash": "264bcdf164308d766ffbbc3e262f1e66",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Hallmarking-Third-Amendment-Order-06092023.pdf": {
+    "mtime": 1788256022.9485989,
+    "seen": 1789542072.1967883,
+    "ast_hash": "a845fb3348798b9b020e13e3f39e5959",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Hallmarking-notification-dt-31.3.2023.pdf": {
+    "mtime": 1788255984.3538566,
+    "seen": 1789542072.1967902,
+    "ast_hash": "833d07c2d1e34660ac48dbd7fcbe6b18",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Hallmarking-of-Gold-Jewellery-and-Gold-Artefacts-Amendment-Order-2020.pdf": {
+    "mtime": 1788255819.9611123,
+    "seen": 1789542072.1967926,
+    "ast_hash": "b35556f2092945e84d3066a31a256153",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Hallmarking-of-Gold-Jewellery-and-Gold-Artefacts-Amendment-Order-2022.pdf": {
+    "mtime": 1788255939.6181483,
+    "seen": 1789542072.1967945,
+    "ast_hash": "200b3854ec08a3a72bb3f8cf92065cfb",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Hallmarking-of-gold-jewellery-and-gold-artefacts-order-2026-second-amendments-385-districts-1.pdf": {
+    "mtime": 1788256133.8614001,
+    "seen": 1789542072.1967967,
+    "ast_hash": "fd266a3164926a9941bea8cab1254bb7",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Hm_Manual.pdf": {
+    "mtime": 1788256528.3437479,
+    "seen": 1789542072.1967986,
+    "ast_hash": "191208a7ae49f5a985341cfcea7375c6",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Mandatory-Hallmarking-Order-15.01.2020.pdf": {
+    "mtime": 1788255793.049134,
+    "seen": 1789542072.1968005,
+    "ast_hash": "c320f787f217103ffcf98fe859001e8b",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Notification-related-to-mandatory-Hallmarking-2.pdf": {
+    "mtime": 1788256178.647678,
+    "seen": 1789542072.1968024,
+    "ast_hash": "f879c92bd2c64ebb5836a1c8462bdba9",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Phase-wise-coverage-of-districts-under-gold-mandatory-hallmarking.pdf": {
+    "mtime": 1788256206.034374,
+    "seen": 1789542072.1968043,
+    "ast_hash": "bd97ae960b02805f28b4ac61281c1716",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Policy_Qualifying_BIS_Licensed_Jewellers_Refiners_CPTC.pdf": {
+    "mtime": 1788256574.6691666,
+    "seen": 1789542072.1968064,
+    "ast_hash": "bf8e6ca42675ddd86785f865466bd73c",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/QCO_HMD.pdf": {
+    "mtime": 1788255885.5998907,
+    "seen": 1789542072.1968083,
+    "ast_hash": "cb645d874b2f375ddce1fef74e6764ea",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Refinerieslatestlist_18012022.pdf": {
+    "mtime": 1788256633.3049834,
+    "seen": 1789542072.1968105,
+    "ast_hash": "f0a43522fbd667427321ea4abc09fc7e",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/RevisedSTI_GoldCoin-bullion.pdf": {
+    "mtime": 1788256613.4462266,
+    "seen": 1789542072.1968124,
+    "ast_hash": "41ee80317fa0846e2ca69f7a7a2a51f9",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/Revised_Policy_BIS_Recognized_AH_Centres_CPTC_under_GMS_MoF.pdf": {
+    "mtime": 1788256588.8199043,
+    "seen": 1789542072.196814,
+    "ast_hash": "589be4c9fa6a0619ca2fb3983b64e45b",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/brief-on-Hallmarking.pdf": {
+    "mtime": 1788200222.943616,
+    "seen": 1789542072.196816,
+    "ast_hash": "7e98975451ab6cc2fc86c67f3e85b63e",
+    "semantic_hash": ""
+  },
+  "data/procedures/hallmark/qc-order-June-2021-2.pdf": {
+    "mtime": 1788255872.573429,
+    "seen": 1789542072.196818,
+    "ast_hash": "bdc0d963abdf784f28fa46380ea49bfe",
+    "semantic_hash": ""
+  },
+  "data/procedures/laboratory/BIS-Laboratory-Internship-Scheme.pdf": {
+    "mtime": 1788256878.9226828,
+    "seen": 1789542072.1968203,
+    "ast_hash": "d4b9387a621c1eb1591ec4a68bcc50ff",
+    "semantic_hash": ""
+  },
+  "data/procedures/laboratory/Group-2_23042026.pdf": {
+    "mtime": 1788256975.8519137,
+    "seen": 1789542072.1968222,
+    "ast_hash": "877d0b0278cfcfd218a7b17d7aee212e",
+    "semantic_hash": ""
+  },
+  "data/procedures/laboratory/Group_1_24062026.pdf": {
+    "mtime": 1788256959.6167665,
+    "seen": 1789542072.1968274,
+    "ast_hash": "819337bff1d8580b18db72afd8d6eacc",
+    "semantic_hash": ""
+  },
+  "data/procedures/laboratory/LRS-Fee-Annex-A-and-B.pdf": {
+    "mtime": 1788257217.4896383,
+    "seen": 1789542072.1968298,
+    "ast_hash": "c5052895bcf27d6648e043850db6f133",
+    "semantic_hash": ""
+  },
+  "data/procedures/laboratory/LRS_23062020.pdf": {
+    "mtime": 1788257186.1707323,
+    "seen": 1789542072.1968315,
+    "ast_hash": "9aee15e401ca47b5c5e9719dbaf89f34",
+    "semantic_hash": ""
+  },
+  "data/procedures/laboratory/amendment.pdf": {
+    "mtime": 1788257205.328688,
+    "seen": 1789542072.1968334,
+    "ast_hash": "d67606057bdd60e2512b061ed8a3b9f6",
+    "semantic_hash": ""
+  },
+  "data/procedures/registration/Guide_Jeweller_Registration_v1.1.pdf": {
+    "mtime": 1788256341.370669,
+    "seen": 1789542072.1968353,
+    "ast_hash": "aaa8ca06ef31ee05fc3e707b800824d0",
+    "semantic_hash": ""
+  },
+  "frontend/public/bis_logo.png": {
+    "mtime": 1788607382.9486964,
+    "seen": 1789542072.1968374,
+    "ast_hash": "dfda3f4221f4954924d2ec9af9a870ef",
+    "semantic_hash": ""
+  },
+  "frontend/public/favicon.svg": {
+    "mtime": 1788444090.7991745,
+    "seen": 1789542072.196839,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": ""
+  },
+  "frontend/public/icons.svg": {
+    "mtime": 1788444090.93301,
+    "seen": 1789542072.1968412,
+    "ast_hash": "3b4fcfcf393eca4d264dca4a4663bc37",
+    "semantic_hash": ""
+  },
+  "frontend/src/assets/bis_logo.png": {
+    "mtime": 1788497922.7866132,
+    "seen": 1789542072.196843,
+    "ast_hash": "e8da99c1ddc11e61db3d5cfd726cd956",
+    "semantic_hash": ""
+  },
+  "frontend/src/assets/hero.png": {
+    "mtime": 1788444090.6763053,
+    "seen": 1789542072.1968448,
+    "ast_hash": "aead493361b27e7510691c5d7072dfc1",
+    "semantic_hash": ""
+  },
+  "frontend/src/assets/react.svg": {
+    "mtime": 1788444091.0509634,
+    "seen": 1789542072.1968465,
+    "ast_hash": "f0402b67b6ce880f65666bb49e841696",
+    "semantic_hash": ""
+  },
+  "frontend/src/assets/vite.svg": {
+    "mtime": 1788444091.1513984,
+    "seen": 1789542072.1968484,
+    "ast_hash": "9960a24288958394ac50e57ff638b036",
+    "semantic_hash": ""
+  }
+}
