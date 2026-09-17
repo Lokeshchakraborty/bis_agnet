@@ -8,9 +8,9 @@ services:
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
-        sync: false
+        value: "postgresql+asyncpg://postgres.egpeowsafzwcgayuhtvq:Lokesh123%23%40@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
       - key: SUPABASE_URL
-        sync: false
+        value: "https://egpeowsafzwcgayuhtvq.supabase.co"
       - key: SUPABASE_KEY
         sync: false
       - key: GOOGLE_API_KEY
@@ -18,7 +18,7 @@ services:
       - key: MISTRAL_API_KEY
         sync: false
       - key: LLM_MODEL
-        value: gemini-3.6-flash
+        value: gemini-3.5-flash-lite
       - key: EMBEDDING_PROVIDER
         value: MistralAIEmbeddings
       - key: EMBEDDING_MODEL
@@ -31,4 +31,5 @@ services:
         value: "true"
       - key: KEEP_ALIVE_INTERVAL_SECONDS
         value: "600"
+
 
