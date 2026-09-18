@@ -482,7 +482,7 @@ async def list_user_sessions_from_supabase(user_id: str) -> List[Dict[str, Any]]
         return []
 
     sql = """
-    SELECT session_id, user_id, active_product_context, turn_count, updated_at
+    SELECT session_id, user_id, active_product_context, turn_count, history, updated_at
     FROM sessions
     WHERE user_id = :user_id
     ORDER BY updated_at DESC;
@@ -492,16 +492,28 @@ async def list_user_sessions_from_supabase(user_id: str) -> List[Dict[str, Any]]
         async with engine.connect() as conn:
             result = await conn.execute(text(sql), {"user_id": user_id or "default_user"})
             rows = result.fetchall()
-            return [
-                {
+            summaries = []
+            for row in rows:
+                last_q = ""
+                raw_hist = getattr(row, "history", None)
+                if raw_hist:
+                    try:
+                        hist_list = raw_hist if isinstance(raw_hist, list) else json.loads(raw_hist)
+                        if isinstance(hist_list, list) and len(hist_list) > 0:
+                            last_q = hist_list[-1].get("user", "")
+                    except Exception:
+                        pass
+                if not last_q:
+                    last_q = row.active_product_context or row.session_id
+
+                summaries.append({
                     "session_id": row.session_id,
                     "user_id": row.user_id,
                     "history_turns": row.turn_count,
-                    "last_query": row.active_product_context or row.session_id,
+                    "last_query": last_q,
                     "updated_at": row.updated_at.isoformat() if row.updated_at else "",
-                }
-                for row in rows
-            ]
+                })
+            return summaries
     except Exception as exc:
         logger.warning("Failed to list sessions for user '%s': %s", user_id, exc)
         return []

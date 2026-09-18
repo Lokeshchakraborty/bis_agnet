@@ -124,3 +124,13 @@ export interface ChatMessage {
   timestamp: string;
   isStreaming?: boolean;
 }
+
+export interface SessionSummary {
+  session_id: string;
+  user_id?: string;
+  history_turns: number;
+  last_query?: string;
+  updated_at?: string;
+  created_at?: string;
+}
+

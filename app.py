@@ -53,15 +53,21 @@ class SessionManager:
 
     def list_sessions(self, user_id: Optional[str] = None) -> List[Dict]:
         """Summarize active session states filtered strictly by user_id."""
+        from datetime import datetime, timezone
         summaries = []
         target_user = user_id or "default_user"
         for (uid, sid), sess in self._sessions.items():
             if uid == target_user:
+                up_dt = datetime.fromtimestamp(getattr(sess, "updated_at", 0) or 0, tz=timezone.utc).isoformat()
+                cr_dt = datetime.fromtimestamp(getattr(sess, "created_at", 0) or 0, tz=timezone.utc).isoformat()
+                l_query = getattr(sess, "last_query", None) or (sess.history[-1][0] if sess.history else None)
                 summaries.append({
                     "session_id": sid,
                     "user_id": uid,
                     "history_turns": len(sess.history),
-                    "last_query": sess.history[-1][0] if sess.history else None,
+                    "last_query": l_query,
+                    "updated_at": up_dt,
+                    "created_at": cr_dt,
                 })
         return summaries
 
@@ -932,11 +938,25 @@ async def list_active_sessions(user_id: str = "default_user") -> SessionInfoResp
         db_sessions = await list_user_sessions_from_supabase(user_id)
         if db_sessions:
             for s in db_sessions:
-                sessions_dict[s["session_id"]] = s
+                sid = s["session_id"]
+                if sid in sessions_dict:
+                    mem_s = sessions_dict[sid]
+                    if not mem_s.get("last_query") and s.get("last_query"):
+                        mem_s["last_query"] = s["last_query"]
+                    if s.get("history_turns", 0) > mem_s.get("history_turns", 0):
+                        mem_s["history_turns"] = s["history_turns"]
+                    db_up = s.get("updated_at") or ""
+                    mem_up = mem_s.get("updated_at") or ""
+                    if db_up > mem_up:
+                        mem_s["updated_at"] = db_up
+                else:
+                    sessions_dict[sid] = s
     except Exception as exc:
         logger.warning("Error fetching sessions from Supabase: %s", exc)
 
     combined = list(sessions_dict.values())
+    # Deterministic descending sort by recency (most recently updated first)
+    combined.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
     return SessionInfoResponse(sessions=combined, total_active=len(combined))
 
 
@@ -960,6 +980,12 @@ async def get_session_history(
             flags=re.IGNORECASE | re.DOTALL | re.MULTILINE,
         ).strip()
 
+    mem_sess = session_manager.get_session(session_id, user_id=user_id)
+    if mem_sess and len(mem_sess.history) > 0:
+        raw_history = list(mem_sess.history)
+        history_json = [{"user": u, "assistant": _clean_text(a)} for u, a in raw_history]
+        return {"session_id": session_id, "history": history_json}
+
     try:
         from backend.db.supabase_client import get_session_from_supabase
         db_sess = await get_session_from_supabase(session_id, user_id=user_id)
@@ -974,11 +1000,14 @@ async def get_session_history(
                 }
                 for turn in history
             ]
+            if clean_db_history and len(mem_sess.history) == 0:
+                for h in clean_db_history:
+                    mem_sess.history.append((h["user"], h["assistant"]))
+                mem_sess.turn_count = len(clean_db_history)
             return {"session_id": session_id, "history": clean_db_history}
     except Exception as exc:
         logger.warning("Error fetching session '%s' from Supabase: %s", session_id, exc)
 
-    mem_sess = session_manager.get_session(session_id, user_id=user_id)
     raw_history = list(mem_sess.history)
     history_json = [{"user": u, "assistant": _clean_text(a)} for u, a in raw_history]
     return {"session_id": session_id, "history": history_json}

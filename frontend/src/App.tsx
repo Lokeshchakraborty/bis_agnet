@@ -9,7 +9,7 @@ import { AuthModal } from './components/AuthModal';
 import { LandingPage } from './components/LandingPage';
 import { UserProfileModal } from './components/UserProfileModal';
 import { AuditLedgerModal } from './components/AuditLedgerModal';
-import type { HealthResponse, ChatMessage, QueryResponse, VoiceQueryResponse, UserProfile } from './types';
+import type { HealthResponse, ChatMessage, QueryResponse, VoiceQueryResponse, UserProfile, SessionSummary } from './types';
 
 
 export const App: React.FC = () => {
@@ -61,14 +61,22 @@ export const App: React.FC = () => {
   };
 
   const [activeSessionId, setActiveSessionId] = useState<string>(() => `session-${Math.floor(1000 + Math.random() * 9000)}`);
-  const [sessions, setSessions] = useState<{ session_id: string; history_turns: number; last_query?: string }[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [lastResponse, setLastResponse] = useState<QueryResponse | null>(null);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessionMessages, setSessionMessages] = useState<Record<string, ChatMessage[]>>({});
+  const [sessionLoading, setSessionLoading] = useState<Record<string, boolean>>({});
+  const [sessionStatus, setSessionStatus] = useState<Record<string, string>>({});
+  const [sessionLastResponse, setSessionLastResponse] = useState<Record<string, QueryResponse | null>>({});
 
-  const [isLoading, setIsLoading] = useState(false);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [isTelemetryOpen, setIsTelemetryOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Derived state for the currently active session
+  const currentMessages = sessionMessages[activeSessionId] || [];
+  const currentLoading = !!sessionLoading[activeSessionId];
+  const currentBackendStatus = sessionStatus[activeSessionId] || '';
+  const currentLastResponse = sessionLastResponse[activeSessionId] || null;
+  const loadingSessionIds = Object.keys(sessionLoading).filter((id) => !!sessionLoading[id]);
 
 
   // Fetch API Health & Active Sessions
@@ -100,8 +108,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     fetchHealth();
     const userId = currentUser?.user_id || 'default_user';
-    setMessages([]);
-    setLastResponse(null);
+    setSessionMessages({});
+    setSessionLoading({});
+    setSessionStatus({});
+    setSessionLastResponse({});
     setActiveSessionId(`session-${Math.floor(1000 + Math.random() * 9000)}`);
     fetchSessions(userId);
   }, [currentUser?.user_id, fetchHealth, fetchSessions]);
@@ -109,8 +119,10 @@ export const App: React.FC = () => {
   const handleAuthSuccess = (user: UserProfile) => {
     setCurrentUser(user);
     localStorage.setItem('bis_user', JSON.stringify(user));
-    setMessages([]);
-    setLastResponse(null);
+    setSessionMessages({});
+    setSessionLoading({});
+    setSessionStatus({});
+    setSessionLastResponse({});
     const newId = `session-${Math.floor(1000 + Math.random() * 9000)}`;
     setActiveSessionId(newId);
     fetchSessions(user.user_id);
@@ -119,16 +131,17 @@ export const App: React.FC = () => {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('bis_user');
-    setMessages([]);
-    setLastResponse(null);
+    setSessionMessages({});
+    setSessionLoading({});
+    setSessionStatus({});
+    setSessionLastResponse({});
     const newId = `session-${Math.floor(1000 + Math.random() * 9000)}`;
     setActiveSessionId(newId);
     fetchSessions('default_user');
   };
 
-  const [currentBackendStatus, setCurrentBackendStatus] = useState<string>('');
-
   const handleSendMessage = async (queryText: string) => {
+    const targetSessionId = activeSessionId;
     const userMsgId = Date.now().toString();
     const userMsg: ChatMessage = {
       id: userMsgId,
@@ -137,9 +150,29 @@ export const App: React.FC = () => {
       timestamp: new Date().toLocaleTimeString(),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
-    setIsLoading(true);
-    setCurrentBackendStatus('Classifying intent & IS standard codes...');
+    // 1. Optimistically register/update session in sidebar immediately!
+    const nowIso = new Date().toISOString();
+    setSessions((prev) => {
+      const existing = prev.find((s) => s.session_id === targetSessionId);
+      const updatedItem: SessionSummary = {
+        session_id: targetSessionId,
+        user_id: currentUser?.user_id || 'default_user',
+        history_turns: (existing?.history_turns || 0) + 1,
+        last_query: queryText,
+        updated_at: nowIso,
+        created_at: existing?.created_at || nowIso,
+      };
+      const others = prev.filter((s) => s.session_id !== targetSessionId);
+      return [updatedItem, ...others];
+    });
+
+    // 2. Append user message and set loading for targetSessionId
+    setSessionMessages((prev) => ({
+      ...prev,
+      [targetSessionId]: [...(prev[targetSessionId] || []), userMsg],
+    }));
+    setSessionLoading((prev) => ({ ...prev, [targetSessionId]: true }));
+    setSessionStatus((prev) => ({ ...prev, [targetSessionId]: 'Classifying intent & IS standard codes...' }));
 
     try {
       const response = await fetch(getApiUrl('/api/v1/query/stream'), {
@@ -147,7 +180,7 @@ export const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: queryText,
-          session_id: activeSessionId,
+          session_id: targetSessionId,
           user_id: currentUser?.user_id || 'default_user',
           llm_provider: currentUser?.llm_provider,
           llm_model: currentUser?.llm_model,
@@ -180,16 +213,18 @@ export const App: React.FC = () => {
               const jsonStr = trimmed.slice(6);
               const data = JSON.parse(jsonStr);
               if (data.type === 'status') {
-                setCurrentBackendStatus(data.message);
+                setSessionStatus((prev) => ({ ...prev, [targetSessionId]: data.message }));
               } else if (data.type === 'token' && data.token) {
-                setCurrentBackendStatus('');
-                setMessages((prev) => {
-                  const last = prev[prev.length - 1];
+                setSessionStatus((prev) => ({ ...prev, [targetSessionId]: '' }));
+                setSessionMessages((prev) => {
+                  const currentList = prev[targetSessionId] || [];
+                  const last = currentList[currentList.length - 1];
                   if (last && last.sender === 'assistant' && last.id === streamingMsgId) {
-                    return [
-                      ...prev.slice(0, -1),
+                    const updatedList = [
+                      ...currentList.slice(0, -1),
                       { ...last, text: last.text + data.token, isStreaming: true },
                     ];
+                    return { ...prev, [targetSessionId]: updatedList };
                   } else {
                     const newStreamingMsg: ChatMessage = {
                       id: streamingMsgId,
@@ -199,14 +234,15 @@ export const App: React.FC = () => {
                       timestamp: new Date().toLocaleTimeString(),
                       isStreaming: true,
                     };
-                    return [...prev, newStreamingMsg];
+                    return { ...prev, [targetSessionId]: [...currentList, newStreamingMsg] };
                   }
                 });
               } else if (data.type === 'result' && data.payload) {
                 const resData: QueryResponse = data.payload;
-                setLastResponse(resData);
-                setMessages((prev) => {
-                  const existingIdx = prev.findIndex((m) => m.id === streamingMsgId);
+                setSessionLastResponse((prev) => ({ ...prev, [targetSessionId]: resData }));
+                setSessionMessages((prev) => {
+                  const currentList = prev[targetSessionId] || [];
+                  const existingIdx = currentList.findIndex((m) => m.id === streamingMsgId);
                   const finalizedMsg: ChatMessage = {
                     id: streamingMsgId,
                     sender: 'assistant',
@@ -216,12 +252,14 @@ export const App: React.FC = () => {
                     timestamp: new Date().toLocaleTimeString(),
                     isStreaming: false,
                   };
+                  let updatedList: ChatMessage[];
                   if (existingIdx !== -1) {
-                    const copy = [...prev];
-                    copy[existingIdx] = finalizedMsg;
-                    return copy;
+                    updatedList = [...currentList];
+                    updatedList[existingIdx] = finalizedMsg;
+                  } else {
+                    updatedList = [...currentList, finalizedMsg];
                   }
-                  return [...prev, finalizedMsg];
+                  return { ...prev, [targetSessionId]: updatedList };
                 });
                 fetchSessions();
               } else if (data.type === 'error') {
@@ -241,17 +279,21 @@ export const App: React.FC = () => {
         text: `⚠️ Error executing turn: ${err.message || 'Server connection failed.'}`,
         timestamp: new Date().toLocaleTimeString(),
       };
-      setMessages((prev) => [...prev, errorMsg]);
+      setSessionMessages((prev) => ({
+        ...prev,
+        [targetSessionId]: [...(prev[targetSessionId] || []), errorMsg],
+      }));
     } finally {
-      setIsLoading(false);
-      setCurrentBackendStatus('');
+      setSessionLoading((prev) => ({ ...prev, [targetSessionId]: false }));
+      setSessionStatus((prev) => ({ ...prev, [targetSessionId]: '' }));
     }
   };
 
 
   const handleVoiceSuccess = (voiceResponse: VoiceQueryResponse) => {
+    const targetSessionId = activeSessionId;
     const data = voiceResponse.result;
-    setLastResponse(data);
+    setSessionLastResponse((prev) => ({ ...prev, [targetSessionId]: data }));
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -268,7 +310,25 @@ export const App: React.FC = () => {
       timestamp: new Date().toLocaleTimeString(),
     };
 
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    const nowIso = new Date().toISOString();
+    setSessions((prev) => {
+      const existing = prev.find((s) => s.session_id === targetSessionId);
+      const updatedItem: SessionSummary = {
+        session_id: targetSessionId,
+        user_id: currentUser?.user_id || 'default_user',
+        history_turns: (existing?.history_turns || 0) + 1,
+        last_query: voiceResponse.transcription,
+        updated_at: nowIso,
+        created_at: existing?.created_at || nowIso,
+      };
+      const others = prev.filter((s) => s.session_id !== targetSessionId);
+      return [updatedItem, ...others];
+    });
+
+    setSessionMessages((prev) => ({
+      ...prev,
+      [targetSessionId]: [...(prev[targetSessionId] || []), userMsg, assistantMsg],
+    }));
     fetchSessions();
   };
 
@@ -277,8 +337,12 @@ export const App: React.FC = () => {
       setIsSidebarOpen(false);
     }
     setActiveSessionId(sessionId);
-    setMessages([]);
-    setLastResponse(null);
+
+    // If session is already in memory or currently loading in background, keep live state
+    if ((sessionMessages[sessionId] && sessionMessages[sessionId].length > 0) || sessionLoading[sessionId]) {
+      return;
+    }
+
     const userId = currentUser?.user_id || 'default_user';
     try {
       const res = await fetch(getApiUrl(`/api/v1/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(userId)}`));
@@ -304,7 +368,10 @@ export const App: React.FC = () => {
               });
             }
           });
-          setMessages(loadedMessages);
+          setSessionMessages((prev) => ({
+            ...prev,
+            [sessionId]: loadedMessages,
+          }));
         }
       }
     } catch (err) {
@@ -318,20 +385,37 @@ export const App: React.FC = () => {
     }
     const newId = `session-${Math.floor(1000 + Math.random() * 9000)}`;
     setActiveSessionId(newId);
-    setMessages([]);
-    setLastResponse(null);
   };
 
   const handleClearSession = async (sessionIdToClear: string) => {
     // Optimistically filter out deleted session
     setSessions((prev) => prev.filter((s) => s.session_id !== sessionIdToClear));
+    setSessionMessages((prev) => {
+      const copy = { ...prev };
+      delete copy[sessionIdToClear];
+      return copy;
+    });
+    setSessionLoading((prev) => {
+      const copy = { ...prev };
+      delete copy[sessionIdToClear];
+      return copy;
+    });
+    setSessionStatus((prev) => {
+      const copy = { ...prev };
+      delete copy[sessionIdToClear];
+      return copy;
+    });
+    setSessionLastResponse((prev) => {
+      const copy = { ...prev };
+      delete copy[sessionIdToClear];
+      return copy;
+    });
+
     const userId = currentUser?.user_id || 'default_user';
 
     if (sessionIdToClear === activeSessionId) {
       const newId = `session-${Math.floor(1000 + Math.random() * 9000)}`;
       setActiveSessionId(newId);
-      setMessages([]);
-      setLastResponse(null);
     }
 
     try {
@@ -419,14 +503,15 @@ export const App: React.FC = () => {
           onOpenProfileModal={() => handleOpenProfileModal('details')}
           onLogout={handleLogout}
           isOpen={isSidebarOpen}
+          loadingSessionIds={loadingSessionIds}
         />
 
         {/* Chat Window */}
         <ChatWindow
-          messages={messages}
+          messages={currentMessages}
           onSendMessage={handleSendMessage}
           onOpenVoiceModal={() => setIsVoiceModalOpen(true)}
-          isLoading={isLoading}
+          isLoading={currentLoading}
           onSelectFollowUp={(prompt) => handleSendMessage(prompt)}
           backendStatus={currentBackendStatus}
           currentUser={currentUser}
@@ -443,7 +528,7 @@ export const App: React.FC = () => {
         <TelemetryPanel
           isOpen={isTelemetryOpen}
           onClose={() => setIsTelemetryOpen(false)}
-          lastResponse={lastResponse}
+          lastResponse={currentLastResponse}
           theme={theme}
         />
       </div>
@@ -453,7 +538,7 @@ export const App: React.FC = () => {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         currentUser={currentUser}
-        lastResponse={lastResponse}
+        lastResponse={currentLastResponse}
         initialTab={profileModalTab}
         theme={theme}
         onSelectTheme={handleSelectTheme}

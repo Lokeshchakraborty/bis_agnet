@@ -74,11 +74,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   sessionId,
   theme = 'light',
 }) => {
+  const isDark = theme === 'dark';
 
   const [inputText, setInputText] = useState('');
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [downloadingMsgId, setDownloadingMsgId] = useState<string | null>(null);
   const [loadingStepIdx, setLoadingStepIdx] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const handleDownloadPdf = async (msg: ChatMessage) => {
@@ -206,12 +208,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     if (!isLoading) {
       setLoadingStepIdx(0);
+      setElapsedSeconds(0);
       return;
     }
-    const interval = setInterval(() => {
+    const startTime = Date.now();
+    const timerInterval = setInterval(() => {
+      setElapsedSeconds(Math.round(((Date.now() - startTime) / 1000) * 10) / 10);
+    }, 100);
+    const stepInterval = setInterval(() => {
       setLoadingStepIdx((prev) => (prev + 1) % THINKING_STEPS.length);
-    }, 1200);
-    return () => clearInterval(interval);
+    }, 1600);
+    return () => {
+      clearInterval(timerInterval);
+      clearInterval(stepInterval);
+    };
   }, [isLoading]);
 
 
@@ -936,32 +946,61 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           })
         )}
 
-        {/* Clean Retrieval State Indicator with subtle flickering transition */}
-        {
-          isLoading && (
-            <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%', padding: '8px 20px' }}>
-              <div
-                className="retrieval-flicker"
+        {/* Clean Realistic AI Retrieval State Indicator */}
+        {isLoading && (
+          <div style={{ maxWidth: '820px', margin: '0 auto', width: '100%', padding: '6px 20px 12px 20px' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '10px',
+                background: 'transparent',
+                border: 'none',
+                boxShadow: 'none',
+                padding: '0',
+                fontSize: '0.92rem',
+                fontWeight: 500,
+              }}
+            >
+              {/* Clean static logo - no animation */}
+              <BisLogo size={18} />
+
+              {/* Clean solid text - no gradient */}
+              <span
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  background: 'transparent',
-                  border: 'none',
-                  boxShadow: 'none',
-                  padding: '0',
-                  fontSize: '0.94rem',
+                  color: isDark ? '#94A3B8' : '#475569',
                   fontWeight: 500,
+                  letterSpacing: '-0.01em',
                 }}
               >
-                <BisLogo size={18} />
-                <span style={{ color: theme === 'dark' ? '#94A3B8' : '#475569', fontWeight: 500, letterSpacing: '-0.01em' }}>
-                  {cleanStatusText(backendStatus || THINKING_STEPS[loadingStepIdx])}
-                </span>
+                {cleanStatusText(backendStatus || THINKING_STEPS[loadingStepIdx])}
+              </span>
+
+              {/* 3 Real-time Subtle Pulsing Wave Dots */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', marginLeft: '2px' }}>
+                <span
+                  className="retrieval-dot retrieval-dot-1"
+                  style={{ background: isDark ? '#94A3B8' : '#64748B' }}
+                />
+                <span
+                  className="retrieval-dot retrieval-dot-2"
+                  style={{ background: isDark ? '#94A3B8' : '#64748B' }}
+                />
+                <span
+                  className="retrieval-dot retrieval-dot-3"
+                  style={{ background: isDark ? '#94A3B8' : '#64748B' }}
+                />
               </div>
+
+              {/* Subtle elapsed time in muted text */}
+              {elapsedSeconds > 0 && (
+                <span style={{ fontSize: '0.76rem', color: isDark ? '#64748B' : '#94A3B8', fontWeight: 500, marginLeft: '4px' }}>
+                  ({elapsedSeconds.toFixed(1)}s)
+                </span>
+              )}
             </div>
-          )
-        }
+          </div>
+        )}
 
 
 

@@ -6,7 +6,8 @@ from __future__ import annotations
 import logging
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, Dict, Tuple,Optional
+from typing import Deque, Dict, Tuple, Optional
+import time
 
 from src.agent.graph import build_graph
 from src.agent.nodes import _fast_classify, _format_history, _is_research_query
@@ -42,6 +43,9 @@ class Session:
     history: Deque[Tuple[str, str]] = field(
         default_factory=lambda: deque(maxlen=CONFIG.max_stored_history)
     )
+    last_query: Optional[str] = None
+    created_at: float = field(default_factory=time.time)
+    updated_at: float = field(default_factory=time.time)
 
     def __post_init__(self):
         self.app, self.nodes = build_graph(
@@ -60,9 +64,10 @@ class Session:
         llm_base_url: Optional[str] = None,
     ) -> dict:
         """Run a single conversation turn with front-loaded cache bypass, rate limiting, and Supabase sync."""
-        import time
         start_t = time.perf_counter()
         self.token_tracker.reset_turn()
+        self.last_query = user_query
+        self.updated_at = time.time()
 
         # Enforce hard rate limiting & token cost telemetry caps per session
         self.turn_count += 1
@@ -230,9 +235,10 @@ class Session:
     ):
         """Stream real-time state updates directly from Python backend execution steps to client."""
         import asyncio
-        import time
         start_t = time.perf_counter()
         self.token_tracker.reset_turn()
+        self.last_query = user_query
+        self.updated_at = time.time()
 
         self.turn_count += 1
         if self.turn_count > MAX_SESSION_TURNS:

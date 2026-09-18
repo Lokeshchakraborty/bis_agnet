@@ -310,21 +310,56 @@ body {
   animation: pulse-gemini 1.8s infinite ease-in-out;
 }
 
-@keyframes retrieval-flicker {
-  0%, 100% {
+/* ==========================================================================
+   Realistic AI Retrieval State Wave Animation
+   ========================================================================== */
+
+@keyframes retrieval-dot-bounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
     opacity: 0.35;
   }
-  50% {
+  40% {
+    transform: scale(1.15);
     opacity: 1;
   }
 }
 
-.retrieval-flicker {
-  animation: retrieval-flicker 1.4s ease-in-out infinite;
-  transition: opacity 0.3s ease;
+.retrieval-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+  animation: retrieval-dot-bounce 1.4s infinite ease-in-out both;
+}
+
+.retrieval-dot-1 {
+  animation-delay: -0.32s;
+}
+
+.retrieval-dot-2 {
+  animation-delay: -0.16s;
+}
+
+.retrieval-dot-3 {
+  animation-delay: 0s;
+}
+
+@keyframes spin-slow {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 10s linear infinite;
 }
 
 @keyframes wave-text {
+
   0%,
   100% {
     opacity: 0.5;
@@ -342,6 +377,7 @@ body {
 }
 
 @keyframes bis-logo-pulse {
+
   0%,
   100% {
     transform: scale(0.96);

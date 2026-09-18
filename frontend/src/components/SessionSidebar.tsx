@@ -1,10 +1,10 @@
 import React from 'react';
 import { Plus, MessageSquare, Trash2, Zap, Bookmark, Sparkles, LogOut, LogIn } from 'lucide-react';
-import type { UserProfile } from '../types';
+import type { UserProfile, SessionSummary } from '../types';
 
 
 interface SessionSidebarProps {
-  sessions: { session_id: string; history_turns: number; last_query?: string }[];
+  sessions: SessionSummary[];
   activeSessionId: string;
   currentUser: UserProfile | null;
   onSelectSession: (id: string) => void;
@@ -17,6 +17,7 @@ interface SessionSidebarProps {
   onLogout: () => void;
   isOpen?: boolean;
   theme?: 'light' | 'dark';
+  loadingSessionIds?: string[];
 }
 
 const BIS_SAMPLE_PROMPTS = [
@@ -40,11 +41,18 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   onLogout,
   isOpen = true,
   theme = 'light',
+  loadingSessionIds = [],
 }) => {
   const isDark = theme === 'dark';
 
-
   if (!isOpen) return null;
+
+  // Strict recency sort: latest updated sessions appear at the top
+  const sortedSessions = [...sessions].sort((a, b) => {
+    const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+    const timeB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+    return timeB - timeA;
+  });
 
   return (
     <aside
@@ -93,13 +101,14 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
           Recent Activity
         </div>
 
-        {sessions.length === 0 ? (
+        {sortedSessions.length === 0 ? (
           <div style={{ padding: '12px 10px', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
             No recent activity.
           </div>
         ) : (
-          sessions.map((sess) => {
+          sortedSessions.map((sess) => {
             const isActive = sess.session_id === activeSessionId;
+            const isGenerating = loadingSessionIds.includes(sess.session_id);
             return (
               <div
                 key={sess.session_id}
@@ -124,11 +133,27 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
                   if (!isActive) e.currentTarget.style.background = 'transparent';
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
-                  <MessageSquare size={15} color={isActive ? (isDark ? '#93C5FD' : '#1D4ED8') : 'var(--text-muted)'} />
-                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden', flex: 1 }}>
+                  {isGenerating ? (
+                    <Sparkles size={15} color="var(--gemini-purple)" className="gemini-pulse" style={{ flexShrink: 0 }} />
+                  ) : (
+                    <MessageSquare size={15} color={isActive ? (isDark ? '#93C5FD' : '#1D4ED8') : 'var(--text-muted)'} style={{ flexShrink: 0 }} />
+                  )}
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: isGenerating ? '110px' : '150px' }}>
                     {sess.last_query || sess.session_id}
                   </span>
+                  {isGenerating && (
+                    <span style={{
+                      fontSize: '0.68rem',
+                      color: 'var(--gemini-purple)',
+                      fontWeight: 600,
+                      animation: 'pulse-gemini 1.5s infinite',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                    }}>
+                      Thinking...
+                    </span>
+                  )}
                 </div>
 
                 <button
@@ -136,7 +161,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
                     e.stopPropagation();
                     onClearSession(sess.session_id);
                   }}
-                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', opacity: 0.6 }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', opacity: 0.6, flexShrink: 0, marginLeft: '6px' }}
                   title="Delete chat"
                 >
                   <Trash2 size={14} />
